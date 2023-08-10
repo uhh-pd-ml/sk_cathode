@@ -73,6 +73,14 @@ class ConditionalNormalizingFlow:
 
         makedirs(self.de_model_path, exist_ok=True)
 
+        nan_mask = ~np.isnan(x_train).any(axis=1)
+        x_train = x_train.copy()[nan_mask]
+        m_train = m_train.copy()[nan_mask]
+
+        nan_mask = ~np.isnan(x_val).any(axis=1)
+        x_val = x_val.copy()[nan_mask]
+        m_val = m_val.copy()[nan_mask]
+
         # build data loader out of numpy arrays
         train_loader = numpy_to_torch_loader(m_train, x_train,
                                              batch_size=batch_size,

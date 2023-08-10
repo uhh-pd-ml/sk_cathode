@@ -57,9 +57,15 @@ class NeuralNetworkClassifier:
     def fit(self, x_train, y_train, x_val, y_val,
             batch_size=128, epochs=100, use_class_weights=True, verbose=False):
 
-        # TODO replace verbose batch printouts by tqdm progress bar?
-
         makedirs(self.clsf_model_path, exist_ok=True)
+
+        nan_mask = ~np.isnan(x_train).any(axis=1)
+        x_train = x_train.copy()[nan_mask]
+        y_train = y_train.copy()[nan_mask]
+
+        nan_mask = ~np.isnan(x_val).any(axis=1)
+        x_val = x_val.copy()[nan_mask]
+        y_val = y_val.copy()[nan_mask]
 
         # deduce class weights for training and validation sets
         # (move outside class as in sklearn?)
