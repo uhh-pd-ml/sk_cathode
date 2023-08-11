@@ -7,6 +7,7 @@ import torch.optim as optim
 
 from os import makedirs
 from os.path import join
+from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 from tqdm import tqdm
 
@@ -24,8 +25,8 @@ class NeuralNetwork(nn.Module):
         self.layers.append(nn.Sigmoid())
         self.model_stack = nn.Sequential(*self.layers)
 
-    def forward(self, x):
-        return self.model_stack(x)
+    def forward(self, X):
+        return self.model_stack(X)
 
 
 class NeuralNetworkClassifier:
@@ -47,25 +48,39 @@ class NeuralNetworkClassifier:
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
 
-    def predict(self, x):
+    def predict(self, X):
         with torch.no_grad():
             self.model.eval()
-            x = torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
-            prediction = self.model.forward(x).detach().cpu().numpy()
+            X = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
+            prediction = self.model.forward(X).detach().cpu().numpy()
         return prediction
 
-    def fit(self, x_train, y_train, x_val, y_val,
+    def fit(self, X, y, X_val=None, y_val=None, val_split=0.2,
             batch_size=128, epochs=100, use_class_weights=True, verbose=False):
+
+        # allowing not to provide validation set, just for compatibility with
+        # the sklearn API
+        if X_val is None and y_val is None:
+            if val_split is None or not (val_split > 0. and val_split < 1.):
+                raise ValueError("val_split is needs to be provided and lie "
+                                 "between 0 and 1 in case X_val and y_val are "
+                                 "not provided!")
+            else:
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X, y, test_size=val_split, shuffle=True)
+        else:
+            X_train = X.copy()
+            y_train = y.copy()
 
         makedirs(self.clsf_model_path, exist_ok=True)
 
-        nan_mask = ~np.isnan(x_train).any(axis=1)
-        x_train = x_train.copy()[nan_mask]
-        y_train = y_train.copy()[nan_mask]
+        nan_mask = ~np.isnan(X_train).any(axis=1)
+        X_train = X_train[nan_mask]
+        y_train = y_train[nan_mask]
 
-        nan_mask = ~np.isnan(x_val).any(axis=1)
-        x_val = x_val.copy()[nan_mask]
-        y_val = y_val.copy()[nan_mask]
+        nan_mask = ~np.isnan(X_val).any(axis=1)
+        X_val = X_val[nan_mask]
+        y_val = y_val[nan_mask]
 
         # deduce class weights for training and validation sets
         # (move outside class as in sklearn?)
@@ -82,11 +97,11 @@ class NeuralNetworkClassifier:
             class_weights_val = None
 
         # build data loader out of numpy arrays
-        train_loader = numpy_to_torch_loader(x_train, y_train,
+        train_loader = numpy_to_torch_loader(X_train, y_train,
                                              batch_size=batch_size,
                                              shuffle=True,
                                              device=self.device)
-        val_loader = numpy_to_torch_loader(x_val, y_val,
+        val_loader = numpy_to_torch_loader(X_val, y_val,
                                            batch_size=batch_size,
                                            shuffle=True,
                                            device=self.device)
@@ -186,13 +201,13 @@ class NeuralNetworkClassifier:
         torch.save(self.model.state_dict(), model_path)
 
 
-def numpy_to_torch_loader(x, y, batch_size=128, shuffle=True,
+def numpy_to_torch_loader(X, y, batch_size=128, shuffle=True,
                           device=torch.device("cpu")):
-    x_torch = torch.from_numpy(
-        x).type(torch.FloatTensor).to(device)
+    X_torch = torch.from_numpy(
+        X).type(torch.FloatTensor).to(device)
     y_torch = torch.from_numpy(
         y).type(torch.FloatTensor).to(device).reshape(-1, 1)
-    dataset = torch.utils.data.TensorDataset(x_torch, y_torch)
+    dataset = torch.utils.data.TensorDataset(X_torch, y_torch)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle)
     return dataloader

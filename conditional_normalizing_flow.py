@@ -8,6 +8,7 @@ import flows as fnn
 
 from os import makedirs
 from os.path import join
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
@@ -68,25 +69,39 @@ class ConditionalNormalizingFlow:
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
 
-    def fit(self, m_train, x_train, m_val, x_val,
+    def fit(self, X, m, X_val=None, m_val=None, val_split=0.2,
             batch_size=256, epochs=100, verbose=False):
+
+        # allowing not to provide validation set, just for compatibility with
+        # the sklearn API
+        if X_val is None and m_val is None:
+            if val_split is None or not (val_split > 0. and val_split < 1.):
+                raise ValueError("val_split is needs to be provided and lie "
+                                 "between 0 and 1 in case X_val and m_val are "
+                                 "not provided!")
+            else:
+                X_train, X_val, m_train, m_val = train_test_split(
+                    X, m, test_size=val_split, shuffle=True)
+        else:
+            X_train = X.copy()
+            m_train = m.copy()
 
         makedirs(self.de_model_path, exist_ok=True)
 
-        nan_mask = ~np.isnan(x_train).any(axis=1)
-        x_train = x_train.copy()[nan_mask]
-        m_train = m_train.copy()[nan_mask]
+        nan_mask = ~np.isnan(X_train).any(axis=1)
+        X_train = X_train[nan_mask]
+        m_train = m_train[nan_mask]
 
-        nan_mask = ~np.isnan(x_val).any(axis=1)
-        x_val = x_val.copy()[nan_mask]
-        m_val = m_val.copy()[nan_mask]
+        nan_mask = ~np.isnan(X_val).any(axis=1)
+        X_val = X_val[nan_mask]
+        m_val = m_val[nan_mask]
 
         # build data loader out of numpy arrays
-        train_loader = numpy_to_torch_loader(m_train, x_train,
+        train_loader = numpy_to_torch_loader(X_train, m_train,
                                              batch_size=batch_size,
                                              shuffle=True,
                                              device=self.device)
-        val_loader = numpy_to_torch_loader(m_val, x_val,
+        val_loader = numpy_to_torch_loader(X_val, m_val,
                                            batch_size=batch_size,
                                            shuffle=True,
                                            device=self.device)
@@ -129,19 +144,48 @@ class ConditionalNormalizingFlow:
 
         self.model.eval()
 
-    def sample(self, m):
-        m_torch = torch.from_numpy(
-            m).reshape((-1, 1)).type(torch.FloatTensor).to(self.device)
-        x_torch = self.model.sample(num_samples=len(m_torch),
-                                    cond_inputs=m_torch)
-        return x_torch.cpu().detach().numpy()
+    def transform(self, X, m=None):
 
-    def log_probs(self, m, x):
-        m_torch = torch.from_numpy(
-            m).reshape((-1, 1)).type(torch.FloatTensor).to(self.device)
-        x_torch = torch.from_numpy(x).type(torch.FloatTensor).to(self.device)
-        log_prob = self.model.log_probs(x_torch, m_torch)
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
+        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
+        Z = self.model(X_torch, m_torch)[0]
+
+        return Z.cpu().detach().numpy()
+
+    def sample(self, n_samples=1, m=None):
+
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
+        X_torch = self.model.sample(num_samples=n_samples,
+                                    cond_inputs=m_torch)
+        return X_torch.cpu().detach().numpy()
+
+    def predict_log_proba(self, X, m=None):
+
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
+        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
+        log_prob = self.model.log_probs(X_torch, m_torch)
         return log_prob.detach().cpu().numpy().flatten()
+
+    def predict_proba(self, X, m=None):
+        return np.exp(self.predict_log_proba(X, m=m))
+
+    def score_samples(self, X, m=None):
+        return self.predict_log_proba(X, m=m)
+
+    def score(self, X, m=None):
+        return self.score_samples(X, m=m).sum()
 
     def load_best_model(self):
         if self.save_path is None:
@@ -162,12 +206,11 @@ class ConditionalNormalizingFlow:
 
 # utility functions
 
-def numpy_to_torch_loader(m, x, batch_size=256, shuffle=True,
+def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
                           device=torch.device("cpu")):
-    m_torch = torch.from_numpy(
-        m).reshape((-1, 1)).type(torch.FloatTensor).to(device)
-    x_torch = torch.from_numpy(x).type(torch.FloatTensor).to(device)
-    dataset = torch.utils.data.TensorDataset(x_torch, m_torch)
+    X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(device)
+    m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(device)
+    dataset = torch.utils.data.TensorDataset(X_torch, m_torch)
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle)
     return dataloader
