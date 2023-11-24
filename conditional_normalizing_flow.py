@@ -122,7 +122,7 @@ class ConditionalNormalizingFlow:
             print('\nEpoch: {}'.format(epoch))
 
             train_loss = train_epoch(self.model, self.optimizer, train_loader,
-                                     device=torch.device("cpu"),
+                                     device=self.device,
                                      verbose=verbose)[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
                                                  device=self.device)[0]
@@ -191,7 +191,7 @@ class ConditionalNormalizingFlow:
         if self.save_path is None:
             raise ValueError("save_path is None, cannot load best model")
         val_losses = np.load(join(self.save_path, "DE_val_losses.npy"))
-        best_epoch = np.argmin(val_losses)
+        best_epoch = np.argmin(val_losses) - 1  # includes pre-training loss
         self._load_model(
             join(self.de_model_path, f"DE_epoch_{best_epoch}.par"))
         self.model.eval()
