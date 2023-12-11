@@ -130,7 +130,6 @@ class NeuralNetworkClassifier:
                                               batch_labels.to(self.device))
 
                 # translating class weights to sample weights
-                # (legacy from allowing CWoLa sample weights directly, remove?)
                 if class_weights_train is not None:
                     batch_weights_ = class_weight_to_sample_weight(
                         batch_labels, class_weights_train)
