@@ -1,15 +1,10 @@
 # wrapping the density estimator in a sklearn-like API, with nFlows as backend
 
-# TODO change below parts to use nflows instead of flows.py
-# NOTE that I need to fix the domain in order to make an RQS work
-# I could also start a directory with different backends, e.g. *_torch.py, *_nflows.py, *_pyro.py
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# import flows as fnn
 from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
 from nflows.transforms.permutations import ReversePermutation
 from nflows.transforms.base import CompositeTransform
@@ -63,28 +58,11 @@ class ConditionalNormalizingFlow:
                     dropout_probability=0.,
                     use_batch_norm=batch_norm,
                     use_residual_blocks=False)
-                # fnn.MADE(num_inputs, num_hidden,
-                #          num_cond_inputs,
-                #          act=activation_function,
-                #          pre_exp_tanh=pre_exp_tanh),
                 ]
-            # if batch_norm:
-            #     modules += [fnn.BatchNormFlow(num_inputs,
-            #                                   momentum=batch_norm_momentum)]
-            # modules += [fnn.Reverse(num_inputs)]
             modules += [ReversePermutation(features=num_inputs)]
 
-        # self.model = fnn.FlowSequential(*modules)
         transform = CompositeTransform(modules)
         self.model = Flow(transform, base_dist)
-
-        # for module in self.model.modules():
-        #     if isinstance(module, nn.Linear):
-        #         nn.init.orthogonal_(module.weight)
-        #         if hasattr(module, 'bias') and module.bias is not None:
-        #             module.bias.data.fill_(0)
-        # # Workaround bug in flow.py
-        # self.model.num_inputs = num_inputs
 
         self.model.to(self.device)
         total_parameters = sum(p.numel() for p in self.model.parameters()
@@ -277,7 +255,7 @@ def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
 
 def train_epoch(model, optimizer, data_loader,
                 device=torch.device("cpu"), verbose=True):
-    # Does one epoch of ANODE model training.
+    # Does one epoch of flow model training.
 
     model.train()
     train_loss = 0
@@ -309,20 +287,5 @@ def train_epoch(model, optimizer, data_loader,
 
     if verbose:
         pbar.close()
-
-    # has_batch_norm = False
-    # for module in model.modules():
-    #     if isinstance(module, fnn.BatchNormFlow):
-    #         has_batch_norm = True
-    #         module.momentum = 0
-
-    # if has_batch_norm:
-    #     with torch.no_grad():
-    #         model(data_loader.dataset.tensors[0].to(data.device),
-    #               data_loader.dataset.tensors[1].to(data.device).float())
-
-    #     for module in model.modules():
-    #         if isinstance(module, fnn.BatchNormFlow):
-    #             module.momentum = 1
 
     return (np.array(train_loss_avg).flatten().mean(), )
