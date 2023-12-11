@@ -1,15 +1,15 @@
-# wrapping the pyro-based density estimator in a sklearn-like API
+# wrapping the density estimator in a sklearn-like API, with nFlows as backend
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import pyro.distributions as dist
-import pyro.distributions.transforms as T
-
-from functools import partial
-from torch.distributions import constraints
-from pyro.nn import ConditionalAutoRegressiveNN
+from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
+from nflows.transforms.permutations import ReversePermutation
+from nflows.transforms.base import CompositeTransform
+from nflows.distributions.normal import StandardNormal
+from nflows.flows.base import Flow
 
 from os import makedirs
 from os.path import join
@@ -18,15 +18,14 @@ from tqdm import tqdm
 
 
 class ConditionalNormalizingFlow:
-    """Conditional normalizing flow based on pyro but wrapped such that it
+    """Conditional normalizing flow based on nFlows but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
     """
     def __init__(self, save_path=None,
                  model_type="MAF", transform="Affine", optimizer="Adam",
-                 num_inputs=4, num_cond_inputs=1, num_blocks=15,
-                 num_hidden=128, activation_function="relu",
-                 pre_exp_tanh=False, batch_norm=True, batch_norm_momentum=0.1,
-                 clips_logscale=[-3, 3], use_stable=False,
+                 num_inputs=4, num_cond_inputs=1, num_blocks=10,
+                 num_hidden=64, num_layers=2, num_bins=8,
+                 tail_bound=10, batch_norm=False,
                  lr=0.0001, weight_decay=0.000001, no_gpu=False):
 
         if model_type != "MAF":
@@ -41,68 +40,34 @@ class ConditionalNormalizingFlow:
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
 
-        transforms = []
+        base_dist = StandardNormal(shape=[num_inputs])
 
-        try:
-            iter(num_hidden)
-        except TypeError:
-            num_hidden = [num_hidden]
-
-        if activation_function == "relu":
-            nonlinearity = nn.ReLU()
-        else:
-            raise NotImplementedError(
-                "Only ReLU activation function is currently supported")
-
+        modules = []
         for i in range(num_blocks):
-            # switch around order in every layer
-            if i % 2 == 0:
-                perm = list(range(num_inputs))
-            else:
-                perm = list(range(num_inputs))[::-1]
+            modules += [
+                MaskedPiecewiseRationalQuadraticAutoregressiveTransform(
+                    num_bins=num_bins,
+                    tails='linear',
+                    tail_bound=tail_bound,
+                    features=num_inputs,
+                    context_features=num_cond_inputs,
+                    hidden_features=num_hidden,
+                    num_blocks=num_layers,
+                    random_mask=False,
+                    activation=nn.ReLU(),
+                    dropout_probability=0.,
+                    use_batch_norm=batch_norm,
+                    use_residual_blocks=False)
+                ]
+            modules += [ReversePermutation(features=num_inputs)]
 
-            if pre_exp_tanh:
-                af = TanhConditionalAffineAutoregressive(
-                    ConditionalAutoRegressiveNN(
-                        num_inputs,
-                        num_cond_inputs,
-                        num_hidden,
-                        permutation=torch.Tensor(perm),
-                        nonlinearity=nonlinearity)
-                )
-            else:
-                af = T.ConditionalAffineAutoregressive(
-                    ConditionalAutoRegressiveNN(
-                        num_inputs,
-                        num_cond_inputs,
-                        num_hidden,
-                        permutation=torch.Tensor(perm),
-                        nonlinearity=nonlinearity
-                        ),
-                    log_scale_min_clip=clips_logscale[0],
-                    log_scale_max_clip=clips_logscale[1],
-                    stable=use_stable
-                    )
-            transforms.append(af)
-
-            if batch_norm:
-                # no batchnorm in final layer
-                if i == num_blocks-1:
-                    continue
-
-                bn = T.BatchNorm(num_inputs,
-                                 momentum=batch_norm_momentum)
-                transforms.append(bn)
-
-        self.model = MAF_pyro(num_inputs, num_cond_inputs,
-                              self.device, transforms)
+        transform = CompositeTransform(modules)
+        self.model = Flow(transform, base_dist)
 
         self.model.to(self.device)
-
-        total_parameters = sum(
-            p.numel() for p in self.model.parameters() if p.requires_grad)
-
-        print(f"Normalizing Flow has {int(total_parameters)} parameters")
+        total_parameters = sum(p.numel() for p in self.model.parameters()
+                               if p.requires_grad)
+        print(f"ConditionalNormalizingFlow has {total_parameters} parameters")
 
         self.optimizer = optim.Adam(self.model.parameters(),
                                     lr=lr, weight_decay=weight_decay)
@@ -204,8 +169,7 @@ class ConditionalNormalizingFlow:
             raise ValueError("m needs to be provided!")
 
         m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        X_torch = self.model.sample(num_samples=n_samples,
-                                    cond_inputs=m_torch)
+        X_torch = self.model.sample(1, context=m_torch).view(n_samples, -1)
         return X_torch.cpu().detach().numpy()
 
     def predict_log_proba(self, X, m=None):
@@ -216,7 +180,7 @@ class ConditionalNormalizingFlow:
 
         X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
         m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        log_prob = self.model.log_probs(X_torch, m_torch)
+        log_prob = self.model.log_prob(X_torch, m_torch)
         return log_prob.detach().cpu().numpy().flatten()
 
     def predict_proba(self, X, m=None):
@@ -272,7 +236,7 @@ def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
             cond_data = batch_data[1].float()
             cond_data = cond_data.to(device)
 
-            loss_vals_raw = model.log_probs(data, cond_data)
+            loss_vals_raw = model.log_prob(data, cond_data)
             loss_vals = loss_vals_raw.flatten()
 
             n_nans += sum(torch.isnan(loss_vals)).item()
@@ -309,7 +273,7 @@ def train_epoch(model, optimizer, data_loader,
         data = data.to(device)
 
         optimizer.zero_grad()
-        loss = -model.log_probs(data, cond_data)
+        loss = -model.log_prob(data, cond_data)
         train_loss += loss.mean().item()
         train_loss_avg.extend(loss.tolist())
         loss.mean().backward()
@@ -325,146 +289,3 @@ def train_epoch(model, optimizer, data_loader,
         pbar.close()
 
     return (np.array(train_loss_avg).flatten().mean(), )
-
-
-class TanhConditionalAffineAutoregressive(T.ConditionalAffineAutoregressive):
-
-    domain = constraints.real_vector
-    codomain = constraints.real_vector
-    bijective = True
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def condition(self, context):
-        """
-        Conditions on a context variable, returning a non-conditional transform
-        of type :class:`~pyro.distributions.transforms.AffineAutoregressive`.
-        """
-
-        cond_nn = partial(self.nn, context=context)
-        cond_nn.permutation = cond_nn.func.permutation
-        cond_nn.get_permutation = cond_nn.func.get_permutation
-        return TanhAffineAutoregressive(cond_nn, **self.kwargs)
-
-
-class TanhAffineAutoregressive(T.AffineAutoregressive):
-
-    domain = constraints.real_vector
-    codomain = constraints.real_vector
-    bijective = True
-    sign = +1
-    autoregressive = True
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.tanh = nn.Tanh()
-
-    def _call(self, x):
-        mean, log_scale = self.arn(x)
-        self._cached_log_scale = log_scale
-        scale = torch.exp(self.tanh(log_scale))
-
-        y = scale * x + mean
-        return y
-
-    def _inverse(self, y):
-        x_size = y.size()[:-1]
-        perm = self.arn.permutation
-        input_dim = y.size(-1)
-        x = [torch.zeros(x_size, device=y.device)] * input_dim
-
-        # NOTE: Inversion is an expensive operation that scales in the
-        # dimension of the input
-        for idx in perm:
-            mean, log_scale = self.arn(torch.stack(x, dim=-1))
-            inverse_scale = torch.exp(-self.tanh(log_scale[..., idx]))
-            mean = mean[..., idx]
-            x[idx] = (y[..., idx] - mean) * inverse_scale
-
-        x = torch.stack(x, dim=-1)
-        self._cached_log_scale = log_scale
-        return x
-
-    def log_abs_det_jacobian(self, x, y):
-        """
-        Calculates the elementwise determinant of the log Jacobian
-        """
-        x_old, y_old = self._cached_x_y
-        if x is not x_old or y is not y_old:
-            # This call to the parent class Transform will update the cache
-            # as well as calling self._call and recalculating y and log_detJ
-            self(x)
-
-        if self._cached_log_scale is not None:
-            log_scale = self._cached_log_scale
-        else:
-            _, log_scale = self.arn(x)
-            log_scale = self.tanh(log_scale)
-        return log_scale.sum(-1)
-
-
-class MAF_pyro(nn.ModuleList):
-    """ A container for a pyro-based MAF.
-    Mainly needs to be implemented for sampling to work
-    """
-
-    def __init__(self, num_aux_inputs, num_cond_inputs=None,
-                 device=torch.device("cpu"), *args, **kwargs):
-
-        self.num_aux_inputs = num_aux_inputs
-        self.num_cond_inputs = num_cond_inputs
-        self.device = device
-
-        super().__init__(*args, **kwargs)
-
-    def get_dist(self):
-
-        base_distribution = dist.Normal(
-            torch.zeros(self.num_aux_inputs, device=self.device),
-            torch.ones(self.num_aux_inputs, device=self.device),
-            validate_args=False)
-
-        if self.num_cond_inputs is None:
-            distribution = dist.TransformedDistribution(
-                base_distribution, self)
-        else:
-            distribution = dist.ConditionalTransformedDistribution(
-                base_distribution, self)
-
-        return distribution
-
-    def sample(self, num_samples=None, cond_inputs=None):
-
-        if cond_inputs is not None:
-            device = next(self.parameters()).device
-            cond_inputs = cond_inputs.to(device)
-
-            if num_samples > cond_inputs.shape[0]:
-                raise ValueError("Number of samples must be at least as large "
-                                 "as the number of conditional inputs.")
-
-        current_dist = self.get_dist()
-
-        if self.num_cond_inputs is None:
-            sample = current_dist.sample(torch.Size([num_samples, ]))
-        else:
-            sample = current_dist.condition(
-                cond_inputs
-                ).sample(torch.Size([num_samples, ]))
-
-        sample = sample[:num_samples]
-
-        return sample
-
-    def log_probs(self, inputs, cond_inputs=None):
-
-        current_dist = self.get_dist()
-
-        if self.num_cond_inputs is None:
-            log_prob = current_dist.log_prob(inputs)
-        else:
-            log_prob = current_dist.condition(cond_inputs).log_prob(inputs)
-
-        return log_prob

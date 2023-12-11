@@ -250,7 +250,7 @@ def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
 
 def train_epoch(model, optimizer, data_loader,
                 device=torch.device("cpu"), verbose=True):
-    # Does one epoch of ANODE model training.
+    # Does one epoch of flow model training.
 
     model.train()
     train_loss = 0
