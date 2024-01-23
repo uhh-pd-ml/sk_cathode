@@ -6,22 +6,32 @@ from matplotlib import colors
 
 
 def hists_2d(data, labels=None, weights=None, n_features=None, bins=30,
-             color_marginal="blue", color_2d="Blues", out_file=None):
-
-    if labels is None:
-        labels = ["feature {}".format(i) for i in range(n_features)]
+             ranges=None, color_marginal="blue", color_2d="Blues",
+             out_file=None, suppress_show=False, title=None):
 
     if n_features is None:
         n_features = data.shape[1]
 
+    if labels is None:
+        labels = ["feature {}".format(i) for i in range(n_features)]
+
+    if ranges is None:
+        ranges = [None for _ in range(n_features)]
+    else:
+        assert len(ranges) == n_features
+
     fig = plt.figure(figsize=(n_features*2, n_features*2))
     gs = gridspec.GridSpec(n_features, n_features, wspace=0.03, hspace=0.03)
+
+    if title is not None:
+        plt.suptitle(title)
 
     binning = {}
 
     for i in range(n_features):
         plt.subplot(gs[i, i])
         _, binning[i], _ = plt.hist(data[:, i], bins=bins,
+                                    range=ranges[i],
                                     weights=weights,
                                     color=color_marginal)
         plt.yscale("log")
@@ -61,20 +71,26 @@ def hists_2d(data, labels=None, weights=None, n_features=None, bins=30,
 
     if out_file is not None:
         plt.savefig(out_file)
-    plt.show()
+    if not suppress_show:
+        plt.show()
 
 
 def pulls_2d(data_num, data_denom, labels=None, bins=30,
+             ranges=None, numerator_binning=True,
              weights_num=None, weights_denom=None,
-             numerator_binning=True,
-             n_features=None, out_file=None):
-
-    if labels is None:
-        labels = ["feature {}".format(i) for i in range(n_features)]
+             n_features=None, out_file=None, suppress_show=False):
 
     if n_features is None:
         assert data_num.shape[1] == data_denom.shape[1]
         n_features = data_num.shape[1]
+
+    if labels is None:
+        labels = ["feature {}".format(i) for i in range(n_features)]
+
+    if ranges is None:
+        ranges = [None for _ in range(n_features)]
+    else:
+        assert len(ranges) == n_features
 
     fig = plt.figure(figsize=(n_features*2, n_features*2))
     gs = gridspec.GridSpec(n_features, n_features, wspace=0.03, hspace=0.03)
@@ -87,11 +103,13 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
 
         if numerator_binning:
             hist_num, binning[i] = np.histogram(data_num[:, i], bins=bins,
+                                                range=ranges[i],
                                                 weights=weights_num)
             hist_denom, _ = np.histogram(data_denom[:, i], bins=binning[i],
                                          weights=weights_denom)
         else:
             hist_denom, binning[i] = np.histogram(data_denom[:, i], bins=bins,
+                                                  range=ranges[i],
                                                   weights=weights_denom)
             hist_num, _ = np.histogram(data_num[:, i], bins=binning[i],
                                        weights=weights_num)
@@ -119,6 +137,8 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
         plt.axhline(-1., linestyle=":", alpha=0.8,
                     color=plt.rcParams["text.color"])
         plt.ylim(-3, 3)
+        if ranges[i] is not None:
+            plt.xlim(*ranges[i])
 
         if i != n_features-1:
             plt.xticks([])
@@ -172,13 +192,27 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
             else:
                 plt.ylabel(labels[i])
 
+    if weights_denom is not None or weights_num is not None:
+        weights_ax = plt.subplot(gs[n_features-4, n_features-1])
+        if weights_denom is not None:
+            weights_ax.hist(weights_denom, bins=100, range=(0., 2.),
+                            histtype="step", color="cornflowerblue",
+                            label="denom")
+        if weights_num is not None:
+            weights_ax.hist(weights_num, bins=100, range=(0., 2.),
+                            histtype="step", color="orangered",
+                            label="num")
+        weights_ax.set_xlabel("weights")
+        weights_ax.set_yscale("log")
+
     cbar_ax = plt.subplot(gs[n_features-2, n_features-1])
     cbar = fig.colorbar(im, cax=cbar_ax)
     cbar.set_label("pulls", rotation=270)
 
     if out_file is not None:
         plt.savefig(out_file)
-    plt.show()
+    if not suppress_show:
+        plt.show()
 
 
 def profile_1d(data, preds, bins):
@@ -227,15 +261,20 @@ def colormap_hist(data, colormap, bins, ax=None,
                   width=0.95*np.diff(binning)[0])
 
 
-def preds_2d(data, data_preds, labels=None, bins=30,
+def preds_2d(data, data_preds, labels=None, bins=30, ranges=None,
              centering=0.5, preds_range=(-0.05, 0.05),
-             n_features=None, out_file=None):
+             n_features=None, out_file=None, suppress_show=False):
+
+    if n_features is None:
+        n_features = data.shape[1]
 
     if labels is None:
         labels = ["feature {}".format(i) for i in range(n_features)]
 
-    if n_features is None:
-        n_features = data.shape[1]
+    if ranges is None:
+        ranges = [None for _ in range(n_features)]
+    else:
+        assert len(ranges) == n_features
 
     if isinstance(centering, float):
         shift = centering
@@ -254,9 +293,10 @@ def preds_2d(data, data_preds, labels=None, bins=30,
     for i in range(n_features):
 
         plt.subplot(gs[i, i])
-        _, binning[i] = np.histogram(data[:, i], bins=bins)
+        _, binning[i] = np.histogram(data[:, i], bins=bins,
+                                     range=ranges[i])
 
-        profile, binning[i] = profile_1d(data[:, i], data_preds, bins)
+        profile, _ = profile_1d(data[:, i], data_preds, binning[i])
         norm_profile = profile - shift
 
         plt.bar(0.5*(binning[i][:-1]+binning[i][1:])[norm_profile > 0],
@@ -268,6 +308,8 @@ def preds_2d(data, data_preds, labels=None, bins=30,
         plt.axhline(0., linestyle="-", alpha=0.8,
                     color=plt.rcParams["text.color"])
         plt.ylim(*preds_range)
+        if ranges[i] is not None:
+            plt.xlim(*ranges[i])
 
         if i != n_features-1:
             plt.xticks([])
@@ -276,7 +318,7 @@ def preds_2d(data, data_preds, labels=None, bins=30,
         if i != 0:
             plt.yticks([])
         else:
-            plt.ylabel("preds\N{MINUS SIGN}"+centering)
+            plt.ylabel("preds\N{MINUS SIGN}"+str(centering))
 
     for i in range(n_features):
 
@@ -317,8 +359,9 @@ def preds_2d(data, data_preds, labels=None, bins=30,
 
     cbar_ax = plt.subplot(gs[n_features-2, n_features-1])
     cbar = fig.colorbar(im, cax=cbar_ax)
-    cbar.set_label("preds\N{MINUS SIGN}"+centering, rotation=270)
+    cbar.set_label("preds\N{MINUS SIGN}"+str(centering), rotation=270)
 
     if out_file is not None:
         plt.savefig(out_file)
-    plt.show()
+    if not suppress_show:
+        plt.show()
