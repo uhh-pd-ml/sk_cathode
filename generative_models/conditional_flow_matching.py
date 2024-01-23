@@ -1,15 +1,14 @@
-# wrapping the density estimator in a sklearn-like API
+# wrapping conditional flow matching in a sklearn-like API
 import time
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from torchdyn.core import NeuralODE
-
 from os import makedirs
 from os.path import join
 from sklearn.model_selection import train_test_split
+from torchdyn.core import NeuralODE
 from tqdm import tqdm
 
 
@@ -35,19 +34,23 @@ class ConditionalFlowMatching:
 
         self.save_path = save_path
         self.de_model_path = join(save_path, "DE_models/")
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() and not no_gpu else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available()
+                                   and not no_gpu else "cpu")
         self.num_inputs = num_inputs
 
         flows = nn.ModuleList()
         for _ in range(num_blocks):
-            flows.append(CNF(num_inputs, freqs=3, activation=activation_function))
+            flows.append(CNF(num_inputs, freqs=3,
+                             activation=activation_function))
         self.model = flows
 
         self.model.to(self.device)
-        total_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        total_parameters = sum(p.numel() for p in self.model.parameters()
+                               if p.requires_grad)
         print(f"ConditionalFlowMatching has {total_parameters} parameters")
 
-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=lr,
+                                    weight_decay=weight_decay)
 
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
@@ -92,15 +95,19 @@ class ConditionalFlowMatching:
 
         # build data loader out of numpy arrays
         train_loader = numpy_to_torch_loader(
-            X_train, m_train, batch_size=batch_size, shuffle=True, device=self.device
+            X_train, m_train, batch_size=batch_size, shuffle=True,
+            device=self.device
         )
         val_loader = numpy_to_torch_loader(
-            X_val, m_val, batch_size=batch_size, shuffle=True, device=self.device
+            X_val, m_val, batch_size=batch_size, shuffle=True,
+            device=self.device
         )
 
         # record also untrained losses
-        train_loss = compute_loss_over_batches(self.model, train_loader, device=self.device)[0]
-        val_loss = compute_loss_over_batches(self.model, val_loader, device=self.device)[0]
+        train_loss = compute_loss_over_batches(self.model, train_loader,
+                                               device=self.device)[0]
+        val_loss = compute_loss_over_batches(self.model, val_loader,
+                                             device=self.device)[0]
         train_losses = np.array([train_loss])
         val_losses = np.array([val_loss])
         if self.save_path is not None:
@@ -112,19 +119,25 @@ class ConditionalFlowMatching:
             print("\nEpoch: {}".format(epoch))
 
             train_loss = train_epoch(
-                self.model, self.optimizer, train_loader, device=self.device, verbose=verbose
+                self.model, self.optimizer, train_loader,
+                device=self.device, verbose=verbose
             )[0]
-            val_loss = compute_loss_over_batches(self.model, val_loader, device=self.device)[0]
+            val_loss = compute_loss_over_batches(self.model, val_loader,
+                                                 device=self.device)[0]
 
             print("train_loss = ", train_loss)
             print("val_loss = ", val_loss)
-            train_losses = np.concatenate((train_losses, np.array([train_loss])))
+            train_losses = np.concatenate((train_losses,
+                                           np.array([train_loss])))
             val_losses = np.concatenate((val_losses, np.array([val_loss])))
 
             if self.save_path is not None:
-                np.save(join(self.save_path, "DE_train_losses.npy"), train_losses)
-                np.save(join(self.save_path, "DE_val_losses.npy"), val_losses)
-                self._save_model(join(self.de_model_path, f"DE_epoch_{epoch}.par"))
+                np.save(join(self.save_path, "DE_train_losses.npy"),
+                        train_losses)
+                np.save(join(self.save_path, "DE_val_losses.npy"),
+                        val_losses)
+                self._save_model(join(self.de_model_path,
+                                      f"DE_epoch_{epoch}.par"))
 
         self.model.eval()
 
@@ -139,8 +152,10 @@ class ConditionalFlowMatching:
 
         return Z.cpu().detach().numpy()
 
-    def _sample(self, n_samples=1, cond=None, ode_solver="midpoint", ode_steps=100):
-        """Sampling without batched generation. Might create memory issues for large n_samples.
+    def _sample(self, n_samples=1, cond=None, ode_solver="midpoint",
+                ode_steps=100):
+        """Sampling without batched generation.
+        Might create memory issues for large n_samples.
 
         Args:
             n_samples (int, optional): _description_. Defaults to 1.
@@ -166,7 +181,8 @@ class ConditionalFlowMatching:
 
         return samples.cpu().detach().numpy()
 
-    def sample(self, n_samples=1, m=None, solver_config={"solver": "midpoint", "steps": 100}):
+    def sample(self, n_samples=1, m=None,
+               solver_config={"solver": "midpoint", "steps": 100}):
         # m needs to be provided, but trying to mimick the sklearn API here
         if m is None:
             raise ValueError("m needs to be provided!")
@@ -198,11 +214,13 @@ class ConditionalFlowMatching:
             raise ValueError("save_path is None, cannot load best model")
         val_losses = np.load(join(self.save_path, "DE_val_losses.npy"))
         best_epoch = np.argmin(val_losses) - 1  # includes pre-training loss
-        self._load_model(join(self.de_model_path, f"DE_epoch_{best_epoch}.par"))
+        self._load_model(join(self.de_model_path,
+                              f"DE_epoch_{best_epoch}.par"))
         self.model.eval()
 
     def _load_model(self, model_path):
-        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        self.model.load_state_dict(torch.load(model_path,
+                                              map_location=self.device))
 
     def _save_model(self, model_path):
         torch.save(self.model.state_dict(), model_path)
@@ -211,15 +229,19 @@ class ConditionalFlowMatching:
 # utility functions
 
 
-def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True, device=torch.device("cpu")):
+def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
+                          device=torch.device("cpu")):
     X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(device)
     m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(device)
     dataset = torch.utils.data.TensorDataset(X_torch, m_torch)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+    dataloader = torch.utils.data.DataLoader(dataset,
+                                             batch_size=batch_size,
+                                             shuffle=shuffle)
     return dataloader
 
 
-def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
+def compute_loss_over_batches(model, data_loader,
+                              device=torch.device("cpu")):
     # for computing the averaged loss over the entire dataset.
     # Mainly useful for tracking losses during training
     model.eval()
@@ -244,7 +266,8 @@ def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
         return (end_loss,)
 
 
-def train_epoch(model, optimizer, data_loader, device=torch.device("cpu"), verbose=True):
+def train_epoch(model, optimizer, data_loader,
+                device=torch.device("cpu"), verbose=True):
     # Does one epoch of model training.
 
     loss_func = FlowMatchingLoss(model, sigma=1e-4)
@@ -378,7 +401,7 @@ def generate_data(
 
     for i in tqdm(range(num_jet_samples // batch_size), disable=not verbose):
         if cond is not None:
-            cond_batch = cond[i * batch_size : (i + 1) * batch_size]
+            cond_batch = cond[i*batch_size:(i + 1)*batch_size]
         else:
             cond_batch = None
         if i == 1:
@@ -398,7 +421,8 @@ def generate_data(
     end_time = time.time()
 
     if num_jet_samples % batch_size != 0:
-        remaining_samples = num_jet_samples - (num_jet_samples // batch_size * batch_size)
+        remaining_samples = num_jet_samples - (num_jet_samples //
+                                               batch_size * batch_size)
         if cond is not None:
             cond_batch = cond[-remaining_samples:]
         else:
@@ -412,7 +436,8 @@ def generate_data(
                 ode_steps=ode_steps,
             )
 
-    particle_data_sampled = np.concatenate([particle_data_sampled, jet_samples_batch])
+    particle_data_sampled = np.concatenate([particle_data_sampled,
+                                            jet_samples_batch])
     generation_time = end_time - start_time
     return particle_data_sampled, generation_time
 
@@ -433,7 +458,8 @@ class FlowMatchingLoss(nn.Module):
         self.sigma = sigma
 
     def forward(
-        self, x: torch.Tensor, mask: torch.Tensor = None, cond: torch.Tensor = None
+        self, x: torch.Tensor, mask: torch.Tensor = None,
+        cond: torch.Tensor = None
     ) -> torch.Tensor:
         if mask is None:
             mask = torch.ones_like(x[..., 0]).unsqueeze(-1)
@@ -441,7 +467,8 @@ class FlowMatchingLoss(nn.Module):
         if len(x.shape) == 3:
             # for set data
             t = torch.rand_like(torch.ones(x.shape[0]))
-            t = t.unsqueeze(-1).repeat_interleave(x.shape[1], dim=1).unsqueeze(-1)
+            t = t.unsqueeze(-1).repeat_interleave(x.shape[1], dim=1
+                                                  ).unsqueeze(-1)
         else:
             t = torch.rand_like(x[..., 0]).unsqueeze(-1)
         t = t.type_as(x)
@@ -497,7 +524,8 @@ class CNF(nn.Module):
         super().__init__()
         # Any architecture can be used here
         self.net = small_cond_MLP_model(
-            features, features, dim_t=2 * freqs, dim_cond=1, activation=activation
+            features, features, dim_t=2 * freqs, dim_cond=1,
+            activation=activation
         )
 
         self.register_buffer("freqs", torch.arange(1, freqs + 1) * torch.pi)
@@ -535,7 +563,8 @@ class CNF(nn.Module):
             cond=cond,
         )
         if ode_solver == "midpoint":
-            node = NeuralODE(wrapped_cnf, solver="midpoint", sensitivity="adjoint")
+            node = NeuralODE(wrapped_cnf, solver="midpoint",
+                             sensitivity="adjoint")
             t_span = torch.linspace(1.0, 0.0, ode_steps)
             traj = node.trajectory(z, t_span)
             return traj[-1]
