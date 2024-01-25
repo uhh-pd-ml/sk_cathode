@@ -1,5 +1,6 @@
 import numpy as np
 
+from numbers import Real
 from scipy.special import logit, expit
 from sklearn.preprocessing import MinMaxScaler
 
@@ -14,7 +15,7 @@ class LogitScaler(MinMaxScaler):
     """
 
     _parameter_constraints: dict = {
-        "epsilon": ["float"],
+        "epsilon": [Real],
         "copy": ["boolean"],
         "clip": ["boolean"],
     }
