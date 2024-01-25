@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import generative_models.flows as fnn
+import sk_cathode.generative_models.flows as fnn
 
 from os import makedirs
 from os.path import join
