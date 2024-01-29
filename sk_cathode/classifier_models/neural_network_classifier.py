@@ -34,7 +34,8 @@ class NeuralNetworkClassifier:
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
     """
     def __init__(self, save_path=None, n_inputs=4, layers=[64, 64, 64],
-                 lr=0.001, no_gpu=False):
+                 lr=0.001, early_stopping=False, n_epoch_no_change=10,
+                 no_gpu=False):
 
         self.save_path = save_path
         self.clsf_model_path = join(save_path, "CLSF_models/")
@@ -44,6 +45,8 @@ class NeuralNetworkClassifier:
         self.loss = F.binary_cross_entropy
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
+        self.early_stopping = early_stopping
+        self.n_epoch_no_change = n_epoch_no_change
 
         self.model.to(self.device)
 
@@ -60,6 +63,10 @@ class NeuralNetworkClassifier:
     def fit(self, X, y, X_val=None, y_val=None, val_split=0.2,
             sample_weight=None, sample_weight_val=None,
             batch_size=128, epochs=100, use_class_weights=True, verbose=False):
+
+        assert not (epochs is None and not self.early_stopping), (
+            "A finite number of epochs must be set if early stopping"
+            " is not used!")
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
@@ -113,7 +120,7 @@ class NeuralNetworkClassifier:
 
         # training loop
         self.model.train()
-        for epoch in range(epochs):
+        for epoch in range(epochs if epochs is not None else 10000):
             print('\nEpoch: {}'.format(epoch))
             pbar = tqdm(total=len(train_loader.dataset))
             epoch_train_loss = 0.
@@ -213,6 +220,13 @@ class NeuralNetworkClassifier:
                         val_losses)
                 self._save_model(join(self.clsf_model_path,
                                       f"CLSF_epoch_{epoch}.par"))
+
+            if self.early_stopping:
+                if epoch > self.n_epoch_no_change:
+                    if np.all(val_losses[-self.n_epoch_no_change:] >
+                              val_losses[-self.n_epoch_no_change - 1]):
+                        print("Early stopping at epoch", epoch)
+                        break
 
     def load_best_model(self):
         if self.save_path is None:
