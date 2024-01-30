@@ -33,9 +33,10 @@ class NeuralNetworkClassifier:
     """Neural network classifier based on torch but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
     """
-    def __init__(self, save_path=None, n_inputs=4, layers=[64, 64, 64],
-                 lr=0.001, early_stopping=False, n_epoch_no_change=10,
-                 no_gpu=False):
+    def __init__(self, save_path=None, load=False, n_inputs=4,
+                 layers=[64, 64, 64], lr=0.001, early_stopping=False,
+                 patience=10, no_gpu=False, val_split=0.2, batch_size=128,
+                 epochs=100, use_class_weights=True, verbose=False):
 
         self.save_path = save_path
         self.clsf_model_path = join(save_path, "CLSF_models/")
@@ -46,12 +47,20 @@ class NeuralNetworkClassifier:
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
         self.early_stopping = early_stopping
-        self.n_epoch_no_change = n_epoch_no_change
+        self.patience = patience
+        self.val_split = val_split
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.use_class_weights = use_class_weights
+        self.verbose = verbose
 
         self.model.to(self.device)
 
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
+
+        if load:
+            self.load_best_model()
 
     def predict(self, X):
         with torch.no_grad():
@@ -60,24 +69,24 @@ class NeuralNetworkClassifier:
             prediction = self.model.forward(X).detach().cpu().numpy()
         return prediction
 
-    def fit(self, X, y, X_val=None, y_val=None, val_split=0.2,
-            sample_weight=None, sample_weight_val=None,
-            batch_size=128, epochs=100, use_class_weights=True, verbose=False):
+    def fit(self, X, y, X_val=None, y_val=None,
+            sample_weight=None, sample_weight_val=None):
 
-        assert not (epochs is None and not self.early_stopping), (
+        assert not (self.epochs is None and not self.early_stopping), (
             "A finite number of epochs must be set if early stopping"
             " is not used!")
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and y_val is None:
-            if val_split is None or not (val_split > 0. and val_split < 1.):
+            if self.val_split is None or not (self.val_split > 0.
+                                              and self.val_split < 1.):
                 raise ValueError("val_split is needs to be provided and lie "
                                  "between 0 and 1 in case X_val and y_val are "
                                  "not provided!")
             else:
                 X_train, X_val, y_train, y_val = train_test_split(
-                    X, y, test_size=val_split, shuffle=True)
+                    X, y, test_size=self.val_split, shuffle=True)
         else:
             X_train = X.copy()
             y_train = y.copy()
@@ -94,7 +103,7 @@ class NeuralNetworkClassifier:
 
         # deduce class weights for training and validation sets
         # (move outside class as in sklearn?)
-        if use_class_weights:
+        if self.use_class_weights:
             class_weights_train = class_weight.compute_class_weight(
                 'balanced', classes=np.unique(y_train), y=y_train)
             class_weights_train = dict(enumerate(class_weights_train))
@@ -109,18 +118,18 @@ class NeuralNetworkClassifier:
         # build data loader out of numpy arrays
         train_loader = numpy_to_torch_loader(X_train, y_train,
                                              sample_weights=sample_weight,
-                                             batch_size=batch_size,
+                                             batch_size=self.batch_size,
                                              shuffle=True,
                                              device=self.device)
         val_loader = numpy_to_torch_loader(X_val, y_val,
                                            sample_weights=sample_weight_val,
-                                           batch_size=batch_size,
+                                           batch_size=self.batch_size,
                                            shuffle=True,
                                            device=self.device)
 
         # training loop
         self.model.train()
-        for epoch in range(epochs if epochs is not None else 10000):
+        for epoch in range(self.epochs if self.epochs is not None else 10000):
             print('\nEpoch: {}'.format(epoch))
             pbar = tqdm(total=len(train_loader.dataset))
             epoch_train_loss = 0.
@@ -160,14 +169,14 @@ class NeuralNetworkClassifier:
                 batch_loss.backward()
                 self.optimizer.step()
                 epoch_train_loss += batch_loss.item()
-                if verbose:
+                if self.verbose:
                     pbar.update(batch_inputs.size(0))
                     pbar.set_description(
                         "Train loss: {:.6f}".format(
                             epoch_train_loss / (i+1)))
 
             epoch_train_loss /= (i+1)
-            if verbose:
+            if self.verbose:
                 pbar.close()
 
             with torch.no_grad():
@@ -221,9 +230,9 @@ class NeuralNetworkClassifier:
                 self._save_model(self._model_path(epoch))
 
             if self.early_stopping:
-                if epoch > self.n_epoch_no_change:
-                    if np.all(val_losses[-self.n_epoch_no_change:] >
-                              val_losses[-self.n_epoch_no_change - 1]):
+                if epoch > self.patience:
+                    if np.all(val_losses[-self.patience:] >
+                              val_losses[-self.patience - 1]):
                         print("Early stopping at epoch", epoch)
                         break
 

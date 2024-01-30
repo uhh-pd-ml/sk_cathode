@@ -20,6 +20,7 @@ class ConditionalFlowMatching:
     def __init__(
         self,
         save_path=None,
+        load=False,
         optimizer="Adam",
         num_inputs=4,
         num_cond_inputs=1,
@@ -28,19 +29,28 @@ class ConditionalFlowMatching:
         lr=0.0001,
         weight_decay=0.000001,
         early_stopping=False,
-        n_epoch_no_change=10,
+        patience=10,
         no_gpu=False,
+        val_split=0.2,
+        batch_size=256,
+        epochs=100,
+        verbose=False
     ):
         if optimizer != "Adam":
             raise NotImplementedError
 
         self.save_path = save_path
         self.de_model_path = join(save_path, "DE_models/")
+
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
-        self.early_stopping = early_stopping
-        self.n_epoch_no_change = n_epoch_no_change
         self.num_inputs = num_inputs
+        self.early_stopping = early_stopping
+        self.patience = patience
+        self.val_split = val_split
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.verbose = verbose
 
         flows = nn.ModuleList()
         for _ in range(num_blocks):
@@ -59,26 +69,20 @@ class ConditionalFlowMatching:
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
 
-    def fit(
-        self,
-        X,
-        m,
-        X_val=None,
-        m_val=None,
-        val_split=0.2,
-        batch_size=256,
-        epochs=100,
-        verbose=False,
-    ):
+        if load:
+            self.load_best_model()
 
-        assert not (epochs is None and not self.early_stopping), (
+    def fit(self, X, m, X_val=None, m_val=None):
+
+        assert not (self.epochs is None and not self.early_stopping), (
             "A finite number of epochs must be set if early stopping"
             " is not used!")
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and m_val is None:
-            if val_split is None or not (val_split > 0.0 and val_split < 1.0):
+            if self.val_split is None or not (self.val_split > 0.0
+                                              and self.val_split < 1.0):
                 raise ValueError(
                     "val_split is needs to be provided and lie "
                     "between 0 and 1 in case X_val and m_val are "
@@ -86,7 +90,7 @@ class ConditionalFlowMatching:
                 )
             else:
                 X_train, X_val, m_train, m_val = train_test_split(
-                    X, m, test_size=val_split, shuffle=True
+                    X, m, test_size=self.val_split, shuffle=True
                 )
         else:
             X_train = X.copy()
@@ -104,11 +108,11 @@ class ConditionalFlowMatching:
 
         # build data loader out of numpy arrays
         train_loader = numpy_to_torch_loader(
-            X_train, m_train, batch_size=batch_size, shuffle=True,
+            X_train, m_train, batch_size=self.batch_size, shuffle=True,
             device=self.device
         )
         val_loader = numpy_to_torch_loader(
-            X_val, m_val, batch_size=batch_size, shuffle=True,
+            X_val, m_val, batch_size=self.batch_size, shuffle=True,
             device=self.device
         )
 
@@ -124,12 +128,12 @@ class ConditionalFlowMatching:
             np.save(self._val_loss_path(), val_losses)
 
         # training loop
-        for epoch in range(epochs):
+        for epoch in range(self.epochs):
             print("\nEpoch: {}".format(epoch))
 
             train_loss = train_epoch(
                 self.model, self.optimizer, train_loader,
-                device=self.device, verbose=verbose
+                device=self.device, verbose=self.verbose
             )[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
                                                  device=self.device)[0]
@@ -146,9 +150,9 @@ class ConditionalFlowMatching:
                 self._save_model(self._model_path(epoch))
 
             if self.early_stopping:
-                if epoch > self.n_epoch_no_change:
-                    if np.all(val_losses[-self.n_epoch_no_change:] >
-                              val_losses[-self.n_epoch_no_change - 1]):
+                if epoch > self.patience:
+                    if np.all(val_losses[-self.patience:] >
+                              val_losses[-self.patience - 1]):
                         print("Early stopping at epoch", epoch)
                         break
 
