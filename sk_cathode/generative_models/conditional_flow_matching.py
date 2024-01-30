@@ -27,6 +27,8 @@ class ConditionalFlowMatching:
         activation_function="ELU",
         lr=0.0001,
         weight_decay=0.000001,
+        early_stopping=False,
+        n_epoch_no_change=10,
         no_gpu=False,
     ):
         if optimizer != "Adam":
@@ -36,6 +38,8 @@ class ConditionalFlowMatching:
         self.de_model_path = join(save_path, "DE_models/")
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
+        self.early_stopping = early_stopping
+        self.n_epoch_no_change = n_epoch_no_change
         self.num_inputs = num_inputs
 
         flows = nn.ModuleList()
@@ -66,6 +70,11 @@ class ConditionalFlowMatching:
         epochs=100,
         verbose=False,
     ):
+
+        assert not (epochs is None and not self.early_stopping), (
+            "A finite number of epochs must be set if early stopping"
+            " is not used!")
+
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and m_val is None:
@@ -138,6 +147,13 @@ class ConditionalFlowMatching:
                         val_losses)
                 self._save_model(join(self.de_model_path,
                                       f"DE_epoch_{epoch}.par"))
+
+            if self.early_stopping:
+                if epoch > self.n_epoch_no_change:
+                    if np.all(val_losses[-self.n_epoch_no_change:] >
+                              val_losses[-self.n_epoch_no_change - 1]):
+                        print("Early stopping at epoch", epoch)
+                        break
 
         self.model.eval()
 

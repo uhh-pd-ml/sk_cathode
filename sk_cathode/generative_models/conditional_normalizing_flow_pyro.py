@@ -26,8 +26,9 @@ class ConditionalNormalizingFlow:
                  num_inputs=4, num_cond_inputs=1, num_blocks=15,
                  num_hidden=128, activation_function="relu",
                  pre_exp_tanh=False, batch_norm=True, batch_norm_momentum=0.1,
-                 clips_logscale=[-3, 3], use_stable=False,
-                 lr=0.0001, weight_decay=0.000001, no_gpu=False):
+                 clips_logscale=[-3, 3], use_stable=False, lr=0.0001,
+                 weight_decay=0.000001, early_stopping=False,
+                 n_epoch_no_change=10, no_gpu=False):
 
         if model_type != "MAF":
             raise NotImplementedError
@@ -40,6 +41,8 @@ class ConditionalNormalizingFlow:
         self.de_model_path = join(save_path, "DE_models/")
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
+        self.early_stopping = early_stopping
+        self.n_epoch_no_change = n_epoch_no_change
 
         transforms = []
 
@@ -113,6 +116,10 @@ class ConditionalNormalizingFlow:
     def fit(self, X, m, X_val=None, m_val=None, val_split=0.2,
             batch_size=256, epochs=100, verbose=False):
 
+        assert not (epochs is None and not self.early_stopping), (
+            "A finite number of epochs must be set if early stopping"
+            " is not used!")
+
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and m_val is None:
@@ -182,6 +189,13 @@ class ConditionalNormalizingFlow:
                         val_losses)
                 self._save_model(join(self.de_model_path,
                                       f"DE_epoch_{epoch}.par"))
+
+            if self.early_stopping:
+                if epoch > self.n_epoch_no_change:
+                    if np.all(val_losses[-self.n_epoch_no_change:] >
+                              val_losses[-self.n_epoch_no_change - 1]):
+                        print("Early stopping at epoch", epoch)
+                        break
 
         self.model.eval()
 
