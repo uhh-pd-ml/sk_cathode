@@ -120,8 +120,8 @@ class ConditionalFlowMatching:
         train_losses = np.array([train_loss])
         val_losses = np.array([val_loss])
         if self.save_path is not None:
-            np.save(join(self.save_path, "DE_train_losses.npy"), train_losses)
-            np.save(join(self.save_path, "DE_val_losses.npy"), val_losses)
+            np.save(self._train_loss_path(), train_losses)
+            np.save(self._val_loss_path(), val_losses)
 
         # training loop
         for epoch in range(epochs):
@@ -141,12 +141,9 @@ class ConditionalFlowMatching:
             val_losses = np.concatenate((val_losses, np.array([val_loss])))
 
             if self.save_path is not None:
-                np.save(join(self.save_path, "DE_train_losses.npy"),
-                        train_losses)
-                np.save(join(self.save_path, "DE_val_losses.npy"),
-                        val_losses)
-                self._save_model(join(self.de_model_path,
-                                      f"DE_epoch_{epoch}.par"))
+                np.save(self._train_loss_path(), train_losses)
+                np.save(self._val_loss_path(), val_losses)
+                self._save_model(self._model_path(epoch))
 
             if self.early_stopping:
                 if epoch > self.n_epoch_no_change:
@@ -155,7 +152,7 @@ class ConditionalFlowMatching:
                         print("Early stopping at epoch", epoch)
                         break
 
-        self.model.eval()
+        self.load_best_model()
 
     def transform(self, X, m=None):
         # m needs to be provided, but trying to mimick the sklearn API here
@@ -226,13 +223,23 @@ class ConditionalFlowMatching:
         raise NotImplementedError("score not implemented")
 
     def load_best_model(self):
-        if self.save_path is None:
-            raise ValueError("save_path is None, cannot load best model")
-        val_losses = np.load(join(self.save_path, "DE_val_losses.npy"))
+        val_losses = self.load_val_loss()
         best_epoch = np.argmin(val_losses) - 1  # includes pre-training loss
-        self._load_model(join(self.de_model_path,
-                              f"DE_epoch_{best_epoch}.par"))
+        self.load_epoch_model(best_epoch)
         self.model.eval()
+
+    def load_train_loss(self):
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load train loss")
+        return np.load(self._train_loss_path())
+
+    def load_val_loss(self):
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load val loss")
+        return np.load(self._val_loss_path())
+
+    def load_epoch_model(self, epoch):
+        self._load_model(self._model_path(epoch))
 
     def _load_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path,
@@ -240,6 +247,15 @@ class ConditionalFlowMatching:
 
     def _save_model(self, model_path):
         torch.save(self.model.state_dict(), model_path)
+
+    def _train_loss_path(self):
+        return join(self.save_path, "DE_train_losses.npy")
+
+    def _val_loss_path(self):
+        return join(self.save_path, "DE_val_losses.npy")
+
+    def _model_path(self, epoch):
+        return join(self.de_model_path, f"DE_epoch_{epoch}.par")
 
 
 # utility functions

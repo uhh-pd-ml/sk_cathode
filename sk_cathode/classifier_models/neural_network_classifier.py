@@ -214,12 +214,11 @@ class NeuralNetworkClassifier:
                     (val_losses, np.array([epoch_val_loss])))
 
             if self.save_path is not None:
-                np.save(join(self.save_path, "CLSF_train_losses.npy"),
+                np.save(self._train_loss_path(),
                         train_losses)
-                np.save(join(self.save_path, "CLSF_val_losses.npy"),
+                np.save(self._val_loss_path(),
                         val_losses)
-                self._save_model(join(self.clsf_model_path,
-                                      f"CLSF_epoch_{epoch}.par"))
+                self._save_model(self._model_path(epoch))
 
             if self.early_stopping:
                 if epoch > self.n_epoch_no_change:
@@ -228,14 +227,26 @@ class NeuralNetworkClassifier:
                         print("Early stopping at epoch", epoch)
                         break
 
+        self.load_best_model()
+
     def load_best_model(self):
-        if self.save_path is None:
-            raise ValueError("save_path is None, cannot load best model")
-        val_losses = np.load(join(self.save_path, "CLSF_val_losses.npy"))
+        val_losses = self.load_val_loss()
         best_epoch = np.argmin(val_losses)
-        self._load_model(
-            join(self.clsf_model_path, f"CLSF_epoch_{best_epoch}.par"))
+        self.load_epoch_model(best_epoch)
         self.model.eval()
+
+    def load_train_loss(self):
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load train loss")
+        return np.load(self._train_loss_path())
+
+    def load_val_loss(self):
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load val loss")
+        return np.load(self._val_loss_path())
+
+    def load_epoch_model(self, epoch):
+        self._load_model(self._model_path(epoch))
 
     def _load_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path,
@@ -243,6 +254,15 @@ class NeuralNetworkClassifier:
 
     def _save_model(self, model_path):
         torch.save(self.model.state_dict(), model_path)
+
+    def _train_loss_path(self):
+        return join(self.save_path, "CLSF_train_losses.npy")
+
+    def _val_loss_path(self):
+        return join(self.save_path, "CLSF_val_losses.npy")
+
+    def _model_path(self, epoch):
+        return join(self.clsf_model_path, f"CLSF_epoch_{epoch}.par")
 
 
 def numpy_to_torch_loader(X, y, sample_weights=None,
