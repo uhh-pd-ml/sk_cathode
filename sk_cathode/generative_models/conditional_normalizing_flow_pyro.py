@@ -18,9 +18,69 @@ from tqdm import tqdm
 
 
 class ConditionalNormalizingFlow:
-    """Conditional normalizing flow based on pyro but wrapped such that it
+    """Conditional normalizing flow based on Pyro but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
+    Currently only supports the MAF model with affine transformations.
+
+    Parameters
+    ----------
+    save_path : str, optional
+        Path to save the model to. If None, no model is saved.
+        If provided, the model will use the best checkpoint after training.
+    load : bool, optional
+        Whether to load the model from save_path.
+    model_type : str, default="MAF"
+        Type of the model. Currently only "MAF" is implemented.
+    transform : str, default="Affine"
+        Type of the transform. Currently only "Affine" is implemented.
+    optimizer : str, default="Adam"
+        Type of the optimizer. Currently only "Adam" is implemented.
+    num_inputs : int, default=4
+        Number of inputs to the model. These are the ones being modeled.
+    num_cond_inputs : int, default=1
+        Number of conditional inputs to the model.
+    num_blocks : int, default=15
+        Number of MADE blocks in the model.
+    num_hidden : int, default=128
+        Number of hidden units in each MADE block.
+    activation_function : str, default="relu"
+        Activation function to use in the MADE blocks.
+    pre_exp_tanh : bool, default=False
+        Whether to use a tanh activation before the output of the MADE blocks.
+    batch_norm : bool, default=False
+        Whether to use batch normalization.
+    batch_norm_momentum : float, default=0.1
+        Momentum for the batch normalization.
+    clips_logscale : list, default=[-3, 3]
+        Lower and upper clip for the logscale in the affine transformation.
+    use_stable : bool, default=False
+        Whether to use a stable version of the affine MAF.
+    lr : float, default=0.0001
+        Learning rate for the optimizer.
+    weight_decay : float, default=0.000001
+        Weight decay for the optimizer.
+    early_stopping : bool, default=False
+        Whether to use early stopping. If set, the provided number of
+        epochs will be treated as an upper limit.
+    patience : int, default=10
+        Number of epochs to wait for improvement before stopping, if early
+        stopping is used.
+    no_gpu : bool, default=False
+        Turns off GPU usages. By default the GPU is used if available.
+    val_split : float, default=0.2
+        Fraction of the training set to use for validation. Only has an
+        effect if no validation set is provided to the fit method.
+    batch_size : int, default=128
+        Batch size during training.
+    epochs : int, default=100
+        Number of epochs to train for. In case early stopping is used,
+        this is treated as an upper limit. Then also None can be provided,
+        in which case the training will continue until early stopping
+        is triggered.
+    verbose : bool, default=False
+        Whether to print progress during training.
     """
+
     def __init__(self, save_path=None, load=False,
                  model_type="MAF", transform="Affine", optimizer="Adam",
                  num_inputs=4, num_cond_inputs=1, num_blocks=15,
@@ -123,6 +183,24 @@ class ConditionalNormalizingFlow:
             self.load_best_model()
 
     def fit(self, X, m, X_val=None, m_val=None):
+        """Fits (trains) the model to the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        y : numpy.ndarray
+            Target data.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
+
+        Returns
+        -------
+        self : object
+            An instance of the classifier.
+        """
 
         assert not (self.epochs is None and not self.early_stopping), (
             "A finite number of epochs must be set if early stopping"
@@ -203,9 +281,28 @@ class ConditionalNormalizingFlow:
                         print("Early stopping at epoch", epoch)
                         break
 
-        self.load_best_model()
+        self.model.eval()
+        if self.save_path is not None:
+            print("Loading best model state...")
+            self.load_best_model()
+
+        return self
 
     def transform(self, X, m=None):
+        """Transforms the provided data to the latent space.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        Z : numpy.ndarray
+            Latent space representation of the input data.
+        """
 
         # m needs to be provided, but trying to mimick the sklearn API here
         if m is None:
@@ -218,6 +315,20 @@ class ConditionalNormalizingFlow:
         return Z.cpu().detach().numpy()
 
     def sample(self, n_samples=1, m=None):
+        """Samples from the model.
+
+        Parameters
+        ----------
+        n_samples : int, default=1
+            Number of samples to draw.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        X : numpy.ndarray
+            Samples from the model.
+        """
 
         # m needs to be provided, but trying to mimick the sklearn API here
         if m is None:
@@ -229,6 +340,20 @@ class ConditionalNormalizingFlow:
         return X_torch.cpu().detach().numpy()
 
     def predict_log_proba(self, X, m=None):
+        """Predicts the log probability of the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        log_prob : numpy.ndarray
+            Log probability of the provided data.
+        """
 
         # m needs to be provided, but trying to mimick the sklearn API here
         if m is None:
@@ -240,31 +365,97 @@ class ConditionalNormalizingFlow:
         return log_prob.detach().cpu().numpy().flatten()
 
     def predict_proba(self, X, m=None):
+        """Predicts the probability of the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        prob : numpy.ndarray
+            Probability of the provided data.
+        """
         return np.exp(self.predict_log_proba(X, m=m))
 
     def score_samples(self, X, m=None):
+        """Predicts the log probability of the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        log_prob : numpy.ndarray
+            Log probability of the provided data.
+        """
         return self.predict_log_proba(X, m=m)
 
     def score(self, X, m=None):
+        """Predicts the total log probability of the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        log_prob : float
+            Total log probability of the provided data.
+        """
         return self.score_samples(X, m=m).sum()
 
     def load_best_model(self):
+        """Loads the best model state from the provided save_path.
+        """
         val_losses = self.load_val_loss()
         best_epoch = np.argmin(val_losses) - 1  # includes pre-training loss
         self.load_epoch_model(best_epoch)
         self.model.eval()
 
     def load_train_loss(self):
+        """Loads the training loss from the provided save_path.
+
+        Returns
+        -------
+        train_loss : numpy.ndarray
+            Training loss.
+        """
         if self.save_path is None:
             raise ValueError("save_path is None, cannot load train loss")
         return np.load(self._train_loss_path())
 
     def load_val_loss(self):
+        """Loads the validation loss from the provided save_path.
+
+        Returns
+        -------
+        val_loss : numpy.ndarray
+            Validation loss.
+        """
         if self.save_path is None:
             raise ValueError("save_path is None, cannot load val loss")
         return np.load(self._val_loss_path())
 
     def load_epoch_model(self, epoch):
+        """Loads the model state from the provided save_path at the
+        specified epoch.
+
+        Parameters
+        ----------
+        epoch : int
+            Epoch at which to load the model state.
+        """
         self._load_model(self._model_path(epoch))
 
     def _load_model(self, model_path):
@@ -288,6 +479,26 @@ class ConditionalNormalizingFlow:
 
 def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
                           device=torch.device("cpu")):
+    """Builds a torch DataLoader from numpy arrays.
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Input data.
+    m : numpy.ndarray
+        Conditional data.
+    batch_size : int, default=128
+        Batch size.
+    shuffle : bool, default=True
+        Whether to shuffle the data.
+    device : torch.device, default=torch.device("cpu")
+        Device to use.
+
+    Returns
+    -------
+    dataloader : torch.utils.data.DataLoader
+        DataLoader for the provided data.
+    """
     X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(device)
     m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(device)
     dataset = torch.utils.data.TensorDataset(X_torch, m_torch)
@@ -297,8 +508,22 @@ def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
 
 
 def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
-    # for computing the averaged loss over the entire dataset.
-    # Mainly useful for tracking losses during training
+    """Computes the loss over the provided data.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to use.
+    data_loader : torch.utils.data.DataLoader
+        DataLoader for the provided data.
+    device : torch.device, default=torch.device("cpu")
+        Device to use.
+
+    Returns
+    -------
+    loss : float
+        Loss over the provided data.
+    """
     model.eval()
     with torch.no_grad():
         now_loss = 0
@@ -330,8 +555,26 @@ def compute_loss_over_batches(model, data_loader, device=torch.device("cpu")):
 
 def train_epoch(model, optimizer, data_loader,
                 device=torch.device("cpu"), verbose=True):
-    # Does one epoch of flow model training.
+    """Trains the provided model for one epoch.
 
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model to use.
+    optimizer : torch.optim.Optimizer
+        Optimizer to use.
+    data_loader : torch.utils.data.DataLoader
+        DataLoader for the provided data.
+    device : torch.device, default=torch.device("cpu")
+        Device to use.
+    verbose : bool, default=True
+        Whether to print progress during training.
+
+    Returns
+    -------
+    train_loss : float
+        Loss over the provided data.
+    """
     model.train()
     train_loss = 0
     train_loss_avg = []
