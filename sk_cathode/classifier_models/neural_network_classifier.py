@@ -13,6 +13,8 @@ from tqdm import tqdm
 
 
 class NeuralNetwork(nn.Module):
+    """A PyTorch module implementing a simple feed-forward neural network.
+    """
     def __init__(self, layers=[64, 64, 64], n_inputs=4):
         super().__init__()
 
@@ -32,9 +34,48 @@ class NeuralNetwork(nn.Module):
 class NeuralNetworkClassifier:
     """Neural network classifier based on torch but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
+
+    Parameters
+    ----------
+    save_path : str, optional
+        Path to save the model to. If None, no model is saved.
+        If provided, the model will use the best checkpoint after training.
+    load : bool, optional
+        Whether to load the model from save_path.
+    n_inputs : int, default=4
+        Number of input features.
+    layers : list, default=[64, 64, 64]
+        List of integers, specifying the number of nodes in each layer.
+    lr : float, default=0.001
+        Learning rate during training.
+    early_stopping : bool, default=False
+        Whether to use early stopping. If set, the provided number of
+        epochs will be treated as an upper limit.
+    patience : int, default=10
+        Number of epochs to wait for improvement before stopping, if early
+        stopping is used.
+    no_gpu : bool, default=False
+        Turns off GPU usages. By default the GPU is used if available.
+    val_split : float, default=0.2
+        Fraction of the training set to use for validation. Only has an
+        effect if no validation set is provided to the fit method.
+    batch_size : int, default=128
+        Batch size during training.
+    epochs : int, default=100
+        Number of epochs to train for. In case early stopping is used,
+        this is treated as an upper limit. Then also None can be provided,
+        in which case the training will continue until early stopping
+        is triggered.
+    use_class_weights : bool, default=True
+        Whether to use class weights during training.
+    verbose : bool, default=False
+        Whether to print progress during training.
     """
-    def __init__(self, save_path=None, n_inputs=4, layers=[64, 64, 64],
-                 lr=0.001, no_gpu=False):
+
+    def __init__(self, save_path=None, load=False, n_inputs=4,
+                 layers=[64, 64, 64], lr=0.001, early_stopping=False,
+                 patience=10, no_gpu=False, val_split=0.2, batch_size=128,
+                 epochs=100, use_class_weights=True, verbose=False):
 
         self.save_path = save_path
         self.clsf_model_path = join(save_path, "CLSF_models/")
@@ -44,33 +85,81 @@ class NeuralNetworkClassifier:
         self.loss = F.binary_cross_entropy
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
+        self.early_stopping = early_stopping
+        self.patience = patience
+        self.val_split = val_split
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.use_class_weights = use_class_weights
+        self.verbose = verbose
 
         self.model.to(self.device)
 
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
 
+        if load:
+            self.load_best_model()
+
     def predict(self, X):
+        """Predicts the class labels for the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+
+        Returns
+        -------
+        prediction : numpy.ndarray
+            Predicted class labels.
+        """
         with torch.no_grad():
             self.model.eval()
             X = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
             prediction = self.model.forward(X).detach().cpu().numpy()
         return prediction
 
-    def fit(self, X, y, X_val=None, y_val=None, val_split=0.2,
-            sample_weight=None, sample_weight_val=None,
-            batch_size=128, epochs=100, use_class_weights=True, verbose=False):
+    def fit(self, X, y, X_val=None, y_val=None,
+            sample_weight=None, sample_weight_val=None):
+        """Fits (trains) the model to the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        y : numpy.ndarray
+            Target data.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
+        sample_weight : numpy.ndarray, optional
+            Sample weights for the training data.
+        sample_weight_val : numpy.ndarray, optional
+            Sample weights for the validation data.
+
+        Returns
+        -------
+        self : object
+            An instance of the classifier.
+        """
+
+        assert not (self.epochs is None and not self.early_stopping), (
+            "A finite number of epochs must be set if early stopping"
+            " is not used!")
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and y_val is None:
-            if val_split is None or not (val_split > 0. and val_split < 1.):
+            if self.val_split is None or not (self.val_split > 0.
+                                              and self.val_split < 1.):
                 raise ValueError("val_split is needs to be provided and lie "
                                  "between 0 and 1 in case X_val and y_val are "
                                  "not provided!")
             else:
                 X_train, X_val, y_train, y_val = train_test_split(
-                    X, y, test_size=val_split, shuffle=True)
+                    X, y, test_size=self.val_split, shuffle=True)
         else:
             X_train = X.copy()
             y_train = y.copy()
@@ -87,7 +176,7 @@ class NeuralNetworkClassifier:
 
         # deduce class weights for training and validation sets
         # (move outside class as in sklearn?)
-        if use_class_weights:
+        if self.use_class_weights:
             class_weights_train = class_weight.compute_class_weight(
                 'balanced', classes=np.unique(y_train), y=y_train)
             class_weights_train = dict(enumerate(class_weights_train))
@@ -102,18 +191,18 @@ class NeuralNetworkClassifier:
         # build data loader out of numpy arrays
         train_loader = numpy_to_torch_loader(X_train, y_train,
                                              sample_weights=sample_weight,
-                                             batch_size=batch_size,
+                                             batch_size=self.batch_size,
                                              shuffle=True,
                                              device=self.device)
         val_loader = numpy_to_torch_loader(X_val, y_val,
                                            sample_weights=sample_weight_val,
-                                           batch_size=batch_size,
+                                           batch_size=self.batch_size,
                                            shuffle=True,
                                            device=self.device)
 
         # training loop
         self.model.train()
-        for epoch in range(epochs):
+        for epoch in range(self.epochs if self.epochs is not None else 10000):
             print('\nEpoch: {}'.format(epoch))
             pbar = tqdm(total=len(train_loader.dataset))
             epoch_train_loss = 0.
@@ -153,14 +242,14 @@ class NeuralNetworkClassifier:
                 batch_loss.backward()
                 self.optimizer.step()
                 epoch_train_loss += batch_loss.item()
-                if verbose:
+                if self.verbose:
                     pbar.update(batch_inputs.size(0))
                     pbar.set_description(
                         "Train loss: {:.6f}".format(
                             epoch_train_loss / (i+1)))
 
             epoch_train_loss /= (i+1)
-            if verbose:
+            if self.verbose:
                 pbar.close()
 
             with torch.no_grad():
@@ -207,21 +296,68 @@ class NeuralNetworkClassifier:
                     (val_losses, np.array([epoch_val_loss])))
 
             if self.save_path is not None:
-                np.save(join(self.save_path, "CLSF_train_losses.npy"),
+                np.save(self._train_loss_path(),
                         train_losses)
-                np.save(join(self.save_path, "CLSF_val_losses.npy"),
+                np.save(self._val_loss_path(),
                         val_losses)
-                self._save_model(join(self.clsf_model_path,
-                                      f"CLSF_epoch_{epoch}.par"))
+                self._save_model(self._model_path(epoch))
+
+            if self.early_stopping:
+                if epoch > self.patience:
+                    if np.all(val_losses[-self.patience:] >
+                              val_losses[-self.patience - 1]):
+                        print("Early stopping at epoch", epoch)
+                        break
+
+        self.model.eval()
+        if self.save_path is not None:
+            print("Loading best model state...")
+            self.load_best_model()
+
+        return self
 
     def load_best_model(self):
-        if self.save_path is None:
-            raise ValueError("save_path is None, cannot load best model")
-        val_losses = np.load(join(self.save_path, "CLSF_val_losses.npy"))
+        """Loads the best model state from the provided save_path.
+        """
+        val_losses = self.load_val_loss()
         best_epoch = np.argmin(val_losses)
-        self._load_model(
-            join(self.clsf_model_path, f"CLSF_epoch_{best_epoch}.par"))
+        self.load_epoch_model(best_epoch)
         self.model.eval()
+
+    def load_train_loss(self):
+        """Loads the training loss from the provided save_path.
+
+        Returns
+        -------
+        train_loss : numpy.ndarray
+            Training loss.
+        """
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load train loss")
+        return np.load(self._train_loss_path())
+
+    def load_val_loss(self):
+        """Loads the validation loss from the provided save_path.
+
+        Returns
+        -------
+        val_loss : numpy.ndarray
+            Validation loss.
+        """
+        if self.save_path is None:
+            raise ValueError("save_path is None, cannot load val loss")
+        return np.load(self._val_loss_path())
+
+    def load_epoch_model(self, epoch):
+        """Loads the model state from the provided save_path at the
+        specified epoch.
+
+        Parameters
+        ----------
+        epoch : int
+            Epoch at which to load the model state.
+        """
+        self._load_model(self._model_path(epoch))
 
     def _load_model(self, model_path):
         self.model.load_state_dict(torch.load(model_path,
@@ -230,10 +366,41 @@ class NeuralNetworkClassifier:
     def _save_model(self, model_path):
         torch.save(self.model.state_dict(), model_path)
 
+    def _train_loss_path(self):
+        return join(self.save_path, "CLSF_train_losses.npy")
+
+    def _val_loss_path(self):
+        return join(self.save_path, "CLSF_val_losses.npy")
+
+    def _model_path(self, epoch):
+        return join(self.clsf_model_path, f"CLSF_epoch_{epoch}.par")
+
 
 def numpy_to_torch_loader(X, y, sample_weights=None,
                           batch_size=128, shuffle=True,
                           device=torch.device("cpu")):
+    """Builds a torch DataLoader from numpy arrays.
+
+    Parameters
+    ----------
+    X : numpy.ndarray
+        Input data.
+    y : numpy.ndarray
+        Target data.
+    sample_weights : numpy.ndarray, optional
+        Sample weights.
+    batch_size : int, default=128
+        Batch size.
+    shuffle : bool, default=True
+        Whether to shuffle the data.
+    device : torch.device, default=torch.device("cpu")
+        Device to use.
+
+    Returns
+    -------
+    dataloader : torch.utils.data.DataLoader
+        DataLoader for the provided data.
+    """
 
     X_torch = torch.from_numpy(
         X).type(torch.FloatTensor).to(device)
@@ -255,6 +422,21 @@ def numpy_to_torch_loader(X, y, sample_weights=None,
 
 
 def class_weight_to_sample_weight(y, class_weights):
+    """Converts class weights to sample weights.
+
+    Parameters
+    ----------
+    y : torch.Tensor
+        Target data.
+    class_weights : dict
+        Class weights.
+
+    Returns
+    -------
+    sample_weights : torch.Tensor
+        Sample weights.
+    """
+    
     y_cpu = y.to(torch.device("cpu"), copy=True)
     return ((torch.ones(y_cpu.shape) - y_cpu)
             * class_weights[0] + y_cpu*class_weights[1])
