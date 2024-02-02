@@ -5,8 +5,4 @@ __pycache__/
 demos/raw_data/
 demos/input_data/
 demos/input_data_deltaR/
-demos/trained_flows_sklearn/
-demos/trained_classifiers_sklearn/
-demos/trained_flows_sklearn_deltaR/
-demos/trained_classifiers_sklearn_deltaR_CATHODE/
-demos/trained_classifiers_sklearn_deltaR_LaCATHODE/
+demos/trained_*/
