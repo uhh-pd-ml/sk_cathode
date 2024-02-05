@@ -4,7 +4,7 @@
 
 This (work-in-progress) repo aims to illustrate how to deploy anomaly detection models such as [CATHODE](https://arxiv.org/abs/2109.00546) and [LaCATHODE](https://arxiv.org/abs/2210.14924) by hiding technical implementation details behind a scikit-learn-like API.
 
-The directory `sk_cathode/` provides simple-to-use classes and functions, to stick together just like Lego pieces. The directory `demos/` provides illustratives jupyter notebooks on how these can be brought together. Currently it just features `demos/cathode_walkthrough.ipynb`, which simply describes the basic working principle of CATHODE on the LHCO example datasetm and `demos/lacathode_walkthrough.ipynb` guiding through the motivation and working principle of LaCATHODE.
+The directory `sk_cathode/` provides simple-to-use classes and functions, to stick together just like Lego pieces. The directory `demos/` provides illustratives jupyter notebooks on how these can be brought together. Currently it just features `demos/cathode_walkthrough.ipynb`, which simply describes the basic working principle of CATHODE on the LHCO example dataset and `demos/lacathode_walkthrough.ipynb` guiding through the motivation and working principle of LaCATHODE.
 
 The primary goal is to make these anomaly detection methods more accessible and easy to play with, within the scope of tutorials and proof-of-concept studies.
 
