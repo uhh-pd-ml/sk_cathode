@@ -1,6 +1,6 @@
 # wrapping the density estimator in a sklearn-like API, with nFlows as backend
-
 import numpy as np
+import sklearn
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,11 +13,15 @@ from nflows.flows.base import Flow
 
 from os import makedirs
 from os.path import join
+from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
-class ConditionalNormalizingFlow:
+sklearn.set_config(enable_metadata_routing=True)
+
+
+class ConditionalNormalizingFlow(BaseEstimator):
     """Conditional normalizing flow based on nFlows but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
     Currently only supports RQS MAFs.
@@ -100,6 +104,14 @@ class ConditionalNormalizingFlow:
         self.epochs = epochs
         self.verbose = verbose
 
+        # metadata routing for pipeline
+        # TODO implement same for jacobians and sampling
+        self.set_fit_request(X_val=True, m_val=True)
+        self.set_transform_request(m=True)
+        self.set_inverse_transform_request(m=True)
+        self.set_predict_log_proba_request(m=True)
+        self.set_predict_proba_request(m=True)
+        self.set_score_request(m=True)
         base_dist = StandardNormal(shape=[num_inputs])
 
         modules = []
@@ -209,7 +221,7 @@ class ConditionalNormalizingFlow:
             np.save(self._val_loss_path(), val_losses)
 
         # training loop
-        for epoch in range(self.epochs):
+        for epoch in range(self.epochs if self.epochs is not None else 1000):
             print('\nEpoch: {}'.format(epoch))
 
             train_loss = train_epoch(self.model, self.optimizer, train_loader,
@@ -244,6 +256,27 @@ class ConditionalNormalizingFlow:
 
         return self
 
+    def fit_transform(self, X, m, X_val=None, m_val=None):
+        """Trains and then transforms the provided data to the latent space.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        y : numpy.ndarray
+            Target data.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
+
+        Returns
+        -------
+        Xt : numpy.ndarray
+            Latent space representation of the input data.
+        """
+        return self.fit(X, m=m, X_val=X_val, m_val=m_val).transform(X, m=m)
+
     def transform(self, X, m=None):
         """Transforms the provided data to the latent space.
 
@@ -256,7 +289,7 @@ class ConditionalNormalizingFlow:
 
         Returns
         -------
-        Z : numpy.ndarray
+        Xt : numpy.ndarray
             Latent space representation of the input data.
         """
 
@@ -264,11 +297,136 @@ class ConditionalNormalizingFlow:
         if m is None:
             raise ValueError("m needs to be provided!")
 
-        X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
-        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        Z = self.model(X_torch, m_torch)[0]
+        with torch.no_grad():
+            X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(
+                self.device)
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            Xt = self.model._transform.forward(X_torch, context=m_torch)[0]
 
-        return Z.cpu().detach().numpy()
+        return Xt.cpu().detach().numpy()
+
+    def inverse_transform(self, Xt, m=None):
+        """Transforms the provided latent space data to data space.
+
+        Parameters
+        ----------
+        Xt : numpy.ndarray
+            Latent input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        X : numpy.ndarray
+            Data space representation of the (latent) input data.
+        """
+
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        with torch.no_grad():
+            Xt_torch = torch.from_numpy(Xt).type(torch.FloatTensor).to(
+                self.device)
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            X = self.model._transform.inverse(Xt_torch, context=m_torch)[0]
+
+        return X.cpu().detach().numpy()
+
+    def log_jacobian_determinant(self, X, m=None):
+        """Computes the log jacobian determinant of the transformation.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        log_det : numpy.ndarray
+            Log jacobian determinant of the transformation.
+        """
+
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        with torch.no_grad():
+            X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(
+                self.device)
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            log_det = self.model._transform.forward(X_torch, context=m_torch)[1]
+
+        return log_det.cpu().detach().numpy()
+
+    def jacobian_determinant(self, X, m=None):
+        """Computes the jacobian determinant of the transformation.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        jac : numpy.ndarray
+            Jacobian determinant of the transformation.
+        """
+        return np.exp(self.log_jacobian_determinant(X, m=m))
+
+    def inverse_log_jacobian_determinant(self, Xt, m=None):
+        """Computes the inverse log jacobian determinant of the transformation.
+
+        Parameters
+        ----------
+        Xt : numpy.ndarray
+            Input data (latent space).
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        log_det : numpy.ndarray
+            Inverse log jacobian determinant of the transformation.
+        """
+
+        # m needs to be provided, but trying to mimick the sklearn API here
+        if m is None:
+            raise ValueError("m needs to be provided!")
+
+        with torch.no_grad():
+            Xt_torch = torch.from_numpy(Xt).type(torch.FloatTensor).to(
+                self.device)
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            log_det = self.model._transform.inverse(Xt_torch,
+                                                   context=m_torch)[1]
+
+        return log_det.cpu().detach().numpy()
+
+    def inverse_jacobian_determinant(self, Xt, m=None):
+        """Computes the inverse jacobian determinant of the transformation.
+
+        Parameters
+        ----------
+        Xt : numpy.ndarray
+            Input data (latent space).
+        m : numpy.ndarray
+            Conditional data. Needs to be provided.
+
+        Returns
+        -------
+        jac : numpy.ndarray
+            Inverse jacobian determinant of the transformation.
+        """
+        return np.exp(self.inverse_log_jacobian_determinant(Xt, m=m))
 
     def sample(self, n_samples=1, m=None):
         """Samples from the model.
@@ -290,8 +448,10 @@ class ConditionalNormalizingFlow:
         if m is None:
             raise ValueError("m needs to be provided!")
 
-        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        X_torch = self.model.sample(1, context=m_torch).view(n_samples, -1)
+        with torch.no_grad():
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            X_torch = self.model.sample(1, context=m_torch).view(n_samples, -1)
         return X_torch.cpu().detach().numpy()
 
     def predict_log_proba(self, X, m=None):
@@ -314,10 +474,13 @@ class ConditionalNormalizingFlow:
         if m is None:
             raise ValueError("m needs to be provided!")
 
-        X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
-        m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        log_prob = self.model.log_prob(X_torch, m_torch)
-        return log_prob.detach().cpu().numpy().flatten()
+        with torch.no_grad():
+            X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(
+                self.device)
+            m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
+                self.device)
+            log_prob = self.model.log_prob(X_torch, m_torch)
+        return log_prob.detach().cpu().numpy()
 
     def predict_proba(self, X, m=None):
         """Predicts the probability of the provided data.

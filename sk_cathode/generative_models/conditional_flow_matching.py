@@ -1,18 +1,23 @@
 # wrapping conditional flow matching in a sklearn-like API
-import time
 import numpy as np
+import sklearn
+import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
 from os import makedirs
 from os.path import join
+from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from torchdyn.core import NeuralODE
 from tqdm import tqdm
 
 
-class ConditionalFlowMatching:
+sklearn.set_config(enable_metadata_routing=True)
+
+
+class ConditionalFlowMatching(BaseEstimator):
     """Conditional Flow Matching Model wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
 
@@ -94,6 +99,15 @@ class ConditionalFlowMatching:
         self.batch_size = batch_size
         self.epochs = epochs
         self.verbose = verbose
+
+        # metadata routing for pipeline
+        # TODO implement same for jacobians and sampling
+        self.set_fit_request(X_val=True, m_val=True)
+        self.set_transform_request(m=True)
+        self.set_inverse_transform_request(m=True)
+        self.set_predict_log_proba_request(m=True)
+        self.set_predict_proba_request(m=True)
+        self.set_score_request(m=True)
 
         flows = nn.ModuleList()
         for _ in range(num_blocks):
@@ -189,7 +203,7 @@ class ConditionalFlowMatching:
             np.save(self._val_loss_path(), val_losses)
 
         # training loop
-        for epoch in range(self.epochs):
+        for epoch in range(self.epochs if self.epochs is not None else 1000):
             print("\nEpoch: {}".format(epoch))
 
             train_loss = train_epoch(
@@ -224,6 +238,27 @@ class ConditionalFlowMatching:
 
         return self
 
+    def fit_transform(self, X, m, X_val=None, m_val=None):
+        """Trains and then transforms the provided data to the latent space.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        y : numpy.ndarray
+            Target data.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
+
+        Returns
+        -------
+        Xt : numpy.ndarray
+            Latent space representation of the input data.
+        """
+        return self.fit(X, m=m, X_val=X_val, m_val=m_val).transform(X, m=m)
+
     def transform(self, X, m=None):
         """Transforms the provided data to the latent space.
 
@@ -236,7 +271,7 @@ class ConditionalFlowMatching:
 
         Returns
         -------
-        Z : numpy.ndarray
+        Xt : numpy.ndarray
             Latent space representation of the input data.
         """
 
@@ -246,9 +281,29 @@ class ConditionalFlowMatching:
 
         X_torch = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
         m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(self.device)
-        Z = self.model(X_torch, m_torch)[0]
+        Xt = self.model(X_torch, m_torch)[0]
 
-        return Z.cpu().detach().numpy()
+        return Xt.cpu().detach().numpy()
+
+    def inverse_transform(self, Xt, m=None):
+        raise NotImplementedError(
+            "inverse_transform not implemented")
+
+    def log_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "log_jacobian_determinant not implemented")
+
+    def jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "jacobian_determinant not implemented")
+
+    def inverse_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "inverse_jacobian_determinant not implemented")
+
+    def log_inverse_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "log_inverse_jacobian_determinant not implemented")
 
     def _sample(self, n_samples=1, cond=None, ode_solver="midpoint",
                 ode_steps=100):
