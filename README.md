@@ -17,7 +17,9 @@ The primary goal is to make these anomaly detection methods more accessible and 
 
 ## Installation
 
-Just clone via the usual way. The `requirements.txt` covers the necessary libraries to run the default demo notebook. In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/).
+Just clone via the usual way. The `requirements.txt` covers the necessary libraries to run the default demo notebook. 
+
+In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/). The `requirements_full.txt` includes these additional dependencies.
 
 ## Contributing
 

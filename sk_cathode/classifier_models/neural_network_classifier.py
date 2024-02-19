@@ -78,7 +78,10 @@ class NeuralNetworkClassifier:
                  epochs=100, use_class_weights=True, verbose=False):
 
         self.save_path = save_path
-        self.clsf_model_path = join(save_path, "CLSF_models/")
+        if save_path is not None:
+            self.clsf_model_path = join(save_path, "CLSF_models/")
+        else:
+            self.clsf_model_path = None
 
         self.model = NeuralNetwork(layers, n_inputs=n_inputs)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
@@ -164,7 +167,8 @@ class NeuralNetworkClassifier:
             X_train = X.copy()
             y_train = y.copy()
 
-        makedirs(self.clsf_model_path, exist_ok=True)
+        if self.clsf_model_path is not None:
+            makedirs(self.clsf_model_path, exist_ok=True)
 
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
@@ -436,7 +440,7 @@ def class_weight_to_sample_weight(y, class_weights):
     sample_weights : torch.Tensor
         Sample weights.
     """
-    
+
     y_cpu = y.to(torch.device("cpu"), copy=True)
     return ((torch.ones(y_cpu.shape) - y_cpu)
             * class_weights[0] + y_cpu*class_weights[1])

@@ -102,7 +102,10 @@ class ConditionalNormalizingFlow(BaseEstimator):
             raise NotImplementedError
 
         self.save_path = save_path
-        self.de_model_path = join(save_path, "DE_models/")
+        if save_path is not None:
+            self.de_model_path = join(save_path, "DE_models/")
+        else:
+            self.de_model_path = None
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
@@ -198,7 +201,8 @@ class ConditionalNormalizingFlow(BaseEstimator):
             X_train = X.copy()
             m_train = m.copy()
 
-        makedirs(self.de_model_path, exist_ok=True)
+        if self.de_model_path is not None:
+            makedirs(self.de_model_path, exist_ok=True)
 
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
@@ -238,6 +242,9 @@ class ConditionalNormalizingFlow(BaseEstimator):
                                      verbose=self.verbose)[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
                                                  device=self.device)[0]
+
+            if np.isnan(val_loss):
+                raise ValueError("Training yields NaN validation loss!")
 
             print("train_loss = ", train_loss)
             print("val_loss = ", val_loss)
@@ -541,7 +548,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
         log_prob : float
             Total log probability of the provided data.
         """
-        return self.score_samples(X, m=m).sum()
+        return self.score_samples(X, m=m).sum().item()
 
     def load_best_model(self):
         """Loads the best model state from the provided save_path.
