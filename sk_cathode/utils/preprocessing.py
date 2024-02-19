@@ -63,7 +63,7 @@ class LogitScaler(MinMaxScaler):
         return np.prod(z * (1 - z), axis=1, keepdims=True
                        ) * np.prod(self.scale_)
 
-    def log_inverse_jacobian_determinant(self, X):
+    def inverse_log_jacobian_determinant(self, X):
         z = expit(X)
         return np.sum(np.log(z * (1 - z)), axis=1, keepdims=True
                       ) + np.sum(np.log(self.scale_))
@@ -81,9 +81,9 @@ class ExtStandardScaler(StandardScaler):
         return -np.sum(np.log(self.scale_)) * np.ones((len(X), 1))
 
     def inverse_jacobian_determinant(self, X):
-        return np.ones(len(X), 1) * np.prod(self.scale_)
+        return np.ones((len(X), 1)) * np.prod(self.scale_)
 
-    def log_inverse_jacobian_determinant(self, X):
+    def inverse_log_jacobian_determinant(self, X):
         return np.sum(np.log(self.scale_)) * np.ones((len(X), 1))
 
 
@@ -151,7 +151,7 @@ class ExtPipeline(Pipeline):
 
     def log_inverse_jacobian_determinant(self, Xt, **params):
         _raise_for_params(params, self, "inverse_transform")
-        log_jac_det = np.zeros(len(Xt))
+        log_jac_det = np.zeros((len(Xt), 1))
 
         # we don't have to branch here, since params is only non-empty if
         # enable_metadata_routing=True.
