@@ -29,6 +29,7 @@ def test_fit(classifier_model):
         X_test, y_test, X_val=X_val, y_val=y_val)
     assert isinstance(fit_output, type(classifier_model))
 
+
 @pytest.mark.parametrize("classifier_model", classifier_models)
 @allow_not_implemented
 def test_predict(classifier_model):
