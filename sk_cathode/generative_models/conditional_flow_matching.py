@@ -88,7 +88,10 @@ class ConditionalFlowMatching(BaseEstimator):
             raise NotImplementedError
 
         self.save_path = save_path
-        self.de_model_path = join(save_path, "DE_models/")
+        if save_path is not None:
+            self.de_model_path = join(save_path, "DE_models/")
+        else:
+            self.de_model_path = None
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
@@ -153,6 +156,9 @@ class ConditionalFlowMatching(BaseEstimator):
             "A finite number of epochs must be set if early stopping"
             " is not used!")
 
+        assert len(X) >= self.batch_size, (
+            "Batch size needs to be smaller than the number of samples!")
+
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and m_val is None:
@@ -171,7 +177,8 @@ class ConditionalFlowMatching(BaseEstimator):
             X_train = X.copy()
             m_train = m.copy()
 
-        makedirs(self.de_model_path, exist_ok=True)
+        if self.de_model_path is not None:
+            makedirs(self.de_model_path, exist_ok=True)
 
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
@@ -212,6 +219,8 @@ class ConditionalFlowMatching(BaseEstimator):
             )[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
                                                  device=self.device)[0]
+            if np.isnan(val_loss):
+                raise ValueError("Training yields NaN validation loss!")
 
             print("train_loss = ", train_loss)
             print("val_loss = ", val_loss)
@@ -301,7 +310,7 @@ class ConditionalFlowMatching(BaseEstimator):
         raise NotImplementedError(
             "inverse_jacobian_determinant not implemented")
 
-    def log_inverse_jacobian_determinant(self, X, m=None):
+    def inverse_log_jacobian_determinant(self, X, m=None):
         raise NotImplementedError(
             "log_inverse_jacobian_determinant not implemented")
 
@@ -343,10 +352,12 @@ class ConditionalFlowMatching(BaseEstimator):
         if m is None:
             raise ValueError("m needs to be provided!")
 
+        cond = torch.tensor(m, dtype=torch.float32).to(self.device)
+
         samples = generate_data(
             self,
             n_samples,
-            cond=m,
+            cond=cond,
             ode_solver=solver_config["solver"],
             ode_steps=solver_config["steps"],
         )[0]
@@ -635,14 +646,19 @@ def generate_data(
         model (_type_): Model with sample method
         num_jet_samples (int): Number of jet samples to generate
         batch_size (int, optional): Batch size for generation. Defaults to 256.
-        cond (torch.Tensor, optional): Conditioned data if model is conditioned. Defaults to None.
+        cond (torch.Tensor, optional): Conditioned data if model
+            is conditioned. Defaults to None.
         verbose (bool, optional): Print generation progress. Defaults to True.
-        ode_solver (str, optional): ODE solver for sampling. Defaults to "dopri5_zuko".
-        ode_steps (int, optional): Number of steps for ODE solver. Defaults to 100.
+        ode_solver (str, optional): ODE solver for sampling.
+            Defaults to "dopri5_zuko".
+        ode_steps (int, optional): Number of steps for ODE solver.
+            Defaults to 100.
 
 
     Returns:
-        np.array: sampled data of shape (num_jet_samples, num_particles, num_features) with features (eta, phi, pt)
+        np.array: sampled data of shape
+            (num_jet_samples, num_particles, num_features)
+            with features (eta, phi, pt)
         float: generation time
     """
     if verbose:

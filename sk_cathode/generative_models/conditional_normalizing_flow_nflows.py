@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform
+from nflows.transforms.autoregressive import MaskedPiecewiseRationalQuadraticAutoregressiveTransform  # noqa
 from nflows.transforms.permutations import ReversePermutation
 from nflows.transforms.base import CompositeTransform
 from nflows.distributions.normal import StandardNormal
@@ -93,7 +93,10 @@ class ConditionalNormalizingFlow(BaseEstimator):
             raise NotImplementedError
 
         self.save_path = save_path
-        self.de_model_path = join(save_path, "DE_models/")
+        if save_path is not None:
+            self.de_model_path = join(save_path, "DE_models/")
+        else:
+            self.de_model_path = None
 
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
@@ -189,7 +192,8 @@ class ConditionalNormalizingFlow(BaseEstimator):
             X_train = X.copy()
             m_train = m.copy()
 
-        makedirs(self.de_model_path, exist_ok=True)
+        if self.de_model_path is not None:
+            makedirs(self.de_model_path, exist_ok=True)
 
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
@@ -229,6 +233,9 @@ class ConditionalNormalizingFlow(BaseEstimator):
                                      verbose=self.verbose)[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
                                                  device=self.device)[0]
+
+            if np.isnan(val_loss):
+                raise ValueError("Training yields NaN validation loss!")
 
             print("train_loss = ", train_loss)
             print("val_loss = ", val_loss)
@@ -360,9 +367,10 @@ class ConditionalNormalizingFlow(BaseEstimator):
                 self.device)
             m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
                 self.device)
-            log_det = self.model._transform.forward(X_torch, context=m_torch)[1]
+            log_det = self.model._transform.forward(X_torch,
+                                                    context=m_torch)[1]
 
-        return log_det.cpu().detach().numpy()
+        return log_det.cpu().detach().numpy().reshape(-1, 1)
 
     def jacobian_determinant(self, X, m=None):
         """Computes the jacobian determinant of the transformation.
@@ -407,9 +415,9 @@ class ConditionalNormalizingFlow(BaseEstimator):
             m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
                 self.device)
             log_det = self.model._transform.inverse(Xt_torch,
-                                                   context=m_torch)[1]
+                                                    context=m_torch)[1]
 
-        return log_det.cpu().detach().numpy()
+        return log_det.cpu().detach().numpy().reshape(-1, 1)
 
     def inverse_jacobian_determinant(self, Xt, m=None):
         """Computes the inverse jacobian determinant of the transformation.
@@ -480,7 +488,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
             m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(
                 self.device)
             log_prob = self.model.log_prob(X_torch, m_torch)
-        return log_prob.detach().cpu().numpy()
+        return log_prob.detach().cpu().numpy().reshape(-1, 1)
 
     def predict_proba(self, X, m=None):
         """Predicts the probability of the provided data.
@@ -531,7 +539,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
         log_prob : float
             Total log probability of the provided data.
         """
-        return self.score_samples(X, m=m).sum()
+        return self.score_samples(X, m=m).sum().item()
 
     def load_best_model(self):
         """Loads the best model state from the provided save_path.
