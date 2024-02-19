@@ -22,6 +22,7 @@ grpcio==1.60.0
 idna==3.6
 importlib-metadata==7.0.1
 importlib-resources==6.1.1
+iniconfig==2.0.0
 ipykernel==6.29.0
 ipython==8.18.1
 jedi==0.19.1
@@ -51,6 +52,7 @@ pickleshare==0.7.5
 pillow==10.2.0
 pip==23.3.2
 platformdirs==4.1.0
+pluggy==1.4.0
 ply==3.11
 prompt-toolkit==3.0.42
 protobuf==4.23.4
@@ -65,6 +67,7 @@ pyparsing==3.1.1
 PyQt5==5.15.9
 PyQt5-sip==12.12.2
 PySocks==1.7.1
+pytest==8.0.1
 python-dateutil==2.8.2
 pytz==2023.3.post1
 PyYAML==6.0.1
