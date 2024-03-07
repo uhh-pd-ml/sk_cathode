@@ -176,11 +176,13 @@ class HGBClassifier(BaseEstimator):
             print("Loading best model state...")
             self.load_best_model()
 
+        return self
+
     def predict(self, X):
         # The sklearn BDT predicts integer class labels. However, here we work
         # with binary classification and we want the freedom to choose our own
         # working point. Thus, let's return the 1-class probabilities instead.
-        return self.model.predict_proba(X)[:, 1]
+        return self.model.predict_proba(X)[:, 1:2]
 
     def predict_proba(self, X):
         return self.model.predict_proba(X)
