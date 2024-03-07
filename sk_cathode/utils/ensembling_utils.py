@@ -6,6 +6,23 @@ from sklearn.base import BaseEstimator
 
 
 class EnsembleModel(BaseEstimator):
+    """Wrapper class to combine multiple models into a single one.
+    The models need to share the API that should be accessed later.
+    E.g. ensemble_model.fit() will make the same call to the base models,
+    while ensemble_model.predict() will call the predict() method of each
+    base model and aggregate the results via the aggregation_func (default is
+    np.mean).
+
+    Parameters
+    ----------
+    base_model_list : list
+        List of models to be ensembled. They need to have the same API.
+    aggregation_func : function, default=np.mean
+        Function to aggregate predictions of base models.
+    avoid_overwriting : bool, default=False
+        If True, existing models will not be overwritten during training.
+    """
+
     def __init__(self, base_model_list, aggregation_func=np.mean,
                  avoid_overwriting=False):
         self.base_model_list = base_model_list
@@ -64,6 +81,17 @@ class EnsembleModel(BaseEstimator):
 
 
 class EpochEnsembleModel(EnsembleModel):
+    """Wrapper class to build an ensemble from multiple epochs of the
+    same training.
+
+    Parameters
+    ----------
+    base_model : BaseEstimator
+        Model to be ensembled.
+    n_best_epochs : int, default=10
+        Number of best epochs to be ensembled.
+    """
+
     def __init__(self, base_model, n_best_epochs=10):
         self.base_model = base_model
         self.n_best_epochs = n_best_epochs

@@ -15,6 +15,41 @@ from sklearn.utils import class_weight
 
 
 class HGBClassifier(BaseEstimator):
+    """HistGradientBoosting tree classifier based on torch but wrapped such
+    that it mimicks the scikit-learn API, using numpy arrays as inputs
+    and outputs. In addition to the explicit parameters, more arguments can
+    be passed, specific to the sklearn HistGradientBoostingClassifier.
+
+    Parameters
+    ----------
+    save_path : str, optional
+        Path to save the model to. If None, no model is saved.
+        If provided, the model will use the best checkpoint after training.
+    load : bool, optional
+        Whether to load the model from save_path.
+    max_bins : int, default=127
+        Maximum number of bins to use for discretization.
+    early_stopping : bool, default=False
+        Whether to use early stopping. If set, the provided number of
+        iterations will be treated as an upper limit.
+    patience : int, default=10
+        Number of iterations to wait for improvement before stopping, if early
+        stopping is used.
+    val_split : float, default=0.2
+        Fraction of the training set to use for validation. Only has an
+        effect if no validation set is provided to the fit method.
+    max_iter : int, default=100
+        Number of iterations to train for. In case early stopping is used,
+        this is treated as an upper limit. Then also None can be provided,
+        in which case the training will continue until early stopping
+        is triggered.
+    split_seed : int, optional
+        Seed for the under-the-hood validation split of the tree.
+    use_class_weights : bool, default=True
+        Whether to use class weights during training.
+    verbose : bool, default=False
+        Whether to print progress during training.
+    """
 
     def __init__(self, *args, save_path=None, load=False,
                  max_bins=127,  early_stopping=True,
@@ -53,6 +88,28 @@ class HGBClassifier(BaseEstimator):
 
     def fit(self, X, y, X_val=None, y_val=None,
             sample_weight=None, sample_weight_val=None):
+        """Fits (trains) the model to the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        y : numpy.ndarray
+            Target data.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
+        sample_weight : numpy.ndarray, optional
+            Sample weights for the training data.
+        sample_weight_val : numpy.ndarray, optional
+            Sample weights for the validation data.
+
+        Returns
+        -------
+        self : object
+            An instance of the classifier.
+        """
 
         assert not (self.max_iters is None and not self.early_stopping), (
             "A finite number of iterations must be set if early stopping"
@@ -179,15 +236,57 @@ class HGBClassifier(BaseEstimator):
         return self
 
     def predict(self, X):
+        """Predicts the class labels for the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+
+        Returns
+        -------
+        prediction : numpy.ndarray
+            Predicted class labels.
+        """
         # The sklearn BDT predicts integer class labels. However, here we work
         # with binary classification and we want the freedom to choose our own
         # working point. Thus, let's return the 1-class probabilities instead.
         return self.model.predict_proba(X)[:, 1:2]
 
     def predict_proba(self, X):
+        """Returns the class labels  probabilities for the provided data.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+
+        Returns
+        -------
+        prediction : numpy.ndarray
+            Predicted class probablities.
+        """
         return self.model.predict_proba(X)
 
     def score(self, X, y, sample_weight=None):
+        """Returns the mean accuracy on the given test data and labels.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+
+        y : numpy.ndarray
+            Target data.
+
+        sample_weight : numpy.ndarray, optional
+            Sample weights.
+
+        Returns
+        -------
+        score : float
+            Mean accuracy.
+        """
         return self.model.score(X, y, sample_weight=sample_weight)
 
     def load_best_model(self):
