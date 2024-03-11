@@ -15,10 +15,16 @@ from sklearn.utils import class_weight
 
 
 class HGBClassifier(BaseEstimator):
-    """HistGradientBoosting tree classifier based on torch but wrapped such
-    that it mimicks the scikit-learn API, using numpy arrays as inputs
-    and outputs. In addition to the explicit parameters, more arguments can
-    be passed, specific to the sklearn HistGradientBoostingClassifier.
+    """Wrapper class of the HistGradientBoosting tree classifier by
+    scikit-learn. This implementation hacks around the sklearn core such that
+    one has more control over the validation set, i.e. we can pass an explicit
+    validation set with weights and can use early stopping based on that.
+    The predict method returns the 1-class probabilities instead of the
+    integer class labels, because we want to have the freedom to
+    choose our own working point.
+    Moreover, functionality for saving and loading models is added.
+    In addition to the explicit parameters, more arguments can be passed,
+    specific to the sklearn HistGradientBoostingClassifier.
 
     Parameters
     ----------
@@ -156,9 +162,6 @@ class HGBClassifier(BaseEstimator):
         if sample_weight_val is not None:
             sample_weight_val = sample_weight_val[nan_mask]
 
-        # deduce class weights for training and validation sets
-        # and translate them to sample weights
-        # (move outside class as in sklearn?)
         if self.use_class_weights:
             class_weights_train = class_weight.compute_class_weight(
                 'balanced', classes=np.unique(y_train), y=y_train)
