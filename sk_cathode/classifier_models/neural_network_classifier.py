@@ -1,4 +1,5 @@
-# wrapping the classifer in a sklearn-like API
+# wrapping the neural network classifer in a sklearn-like API
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,6 +8,7 @@ import torch.optim as optim
 
 from os import makedirs
 from os.path import join
+from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 from tqdm import tqdm
@@ -31,7 +33,7 @@ class NeuralNetwork(nn.Module):
         return self.model_stack(X)
 
 
-class NeuralNetworkClassifier:
+class NeuralNetworkClassifier(BaseEstimator):
     """Neural network classifier based on torch but wrapped such that it
     mimicks the scikit-learn API, using numpy arrays as inputs and outputs.
 
@@ -161,11 +163,22 @@ class NeuralNetworkClassifier:
                                  "between 0 and 1 in case X_val and y_val are "
                                  "not provided!")
             else:
-                X_train, X_val, y_train, y_val = train_test_split(
-                    X, y, test_size=self.val_split, shuffle=True)
+                if sample_weight is not None:
+                    (X_train, X_val, y_train, y_val,
+                     sample_weight_train, sample_weight_val
+                     ) = train_test_split(
+                        X, y, sample_weight, test_size=self.val_split,
+                        shuffle=True)
+                else:
+                    X_train, X_val, y_train, y_val = train_test_split(
+                        X, y, test_size=self.val_split, shuffle=True)
         else:
             X_train = X.copy()
             y_train = y.copy()
+            if sample_weight is not None:
+                sample_weight_train = sample_weight.copy()
+            else:
+                sample_weight_train = None
 
         if self.clsf_model_path is not None:
             makedirs(self.clsf_model_path, exist_ok=True)
@@ -173,10 +186,14 @@ class NeuralNetworkClassifier:
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
         y_train = y_train[nan_mask]
+        if sample_weight_train is not None:
+            sample_weight_train = sample_weight_train[nan_mask]
 
         nan_mask = ~np.isnan(X_val).any(axis=1)
         X_val = X_val[nan_mask]
         y_val = y_val[nan_mask]
+        if sample_weight_val is not None:
+            sample_weight_val = sample_weight_val[nan_mask]
 
         # deduce class weights for training and validation sets
         # (move outside class as in sklearn?)
@@ -193,16 +210,12 @@ class NeuralNetworkClassifier:
             class_weights_val = None
 
         # build data loader out of numpy arrays
-        train_loader = numpy_to_torch_loader(X_train, y_train,
-                                             sample_weights=sample_weight,
-                                             batch_size=self.batch_size,
-                                             shuffle=True,
-                                             device=self.device)
-        val_loader = numpy_to_torch_loader(X_val, y_val,
-                                           sample_weights=sample_weight_val,
-                                           batch_size=self.batch_size,
-                                           shuffle=True,
-                                           device=self.device)
+        train_loader = numpy_to_torch_loader(
+            X_train, y_train, sample_weights=sample_weight_train,
+            batch_size=self.batch_size, shuffle=True, device=self.device)
+        val_loader = numpy_to_torch_loader(
+            X_val, y_val, sample_weights=sample_weight_val,
+            batch_size=self.batch_size, shuffle=True, device=self.device)
 
         # training loop
         self.model.train()
@@ -214,7 +227,7 @@ class NeuralNetworkClassifier:
 
             for i, batch in enumerate(train_loader):
 
-                if sample_weight is not None:
+                if sample_weight_train is not None:
                     batch_inputs, batch_labels, batch_weights = batch
                 else:
                     batch_inputs, batch_labels = batch
@@ -234,7 +247,7 @@ class NeuralNetworkClassifier:
                 # multiplying in case both class and sample weights are used
                 if batch_weights_ is None:
                     pass
-                elif sample_weight is None:
+                elif sample_weight_train is None:
                     batch_weights = batch_weights_
                 else:
                     batch_weights *= batch_weights_
@@ -260,7 +273,7 @@ class NeuralNetworkClassifier:
                 self.model.eval()
                 for i, batch in enumerate(val_loader):
 
-                    if sample_weight is not None:
+                    if sample_weight_train is not None:
                         batch_inputs, batch_labels, batch_weights = batch
                     else:
                         batch_inputs, batch_labels = batch
@@ -278,7 +291,7 @@ class NeuralNetworkClassifier:
 
                     if batch_weights_ is None:
                         pass
-                    elif sample_weight is None:
+                    elif sample_weight_train is None:
                         batch_weights = batch_weights_
                     else:
                         batch_weights *= batch_weights_

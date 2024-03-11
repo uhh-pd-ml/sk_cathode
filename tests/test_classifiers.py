@@ -1,11 +1,13 @@
 import numpy as np
 import pytest
 
-from sk_cathode.classifier_models.neural_network_classifier import NeuralNetworkClassifier as ClassifierModel  # noqa
+from sk_cathode.classifier_models.neural_network_classifier import NeuralNetworkClassifier as ClassifierModelNN  # noqa
+from sk_cathode.classifier_models.boosted_decision_tree import HGBClassifier as ClassifierModelTree  # noqa
 
 
 classifier_models = [
-    ClassifierModel(epochs=1, save_path=None,),
+    ClassifierModelNN(epochs=1, save_path=None,),
+    ClassifierModelTree(max_iters=10, save_path=None,),
 ]
 X_test = np.random.rand(300, 4)
 y_test = np.random.randint(0, 2, 300)

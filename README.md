@@ -14,6 +14,7 @@ The primary goal is to make these anomaly detection methods more accessible and 
 - `demos/cathode_walkthrough.ipynb` simply describes the basic working principle of the CATHODE method for weakly supervised anomaly detection on the LHCO example dataset.
 - `demos/lacathode_walkthrough.ipynb` touches the issue of background sculpting and guides through the working principle of LaCATHODE to mitigate this in (CATHODE-based) weak supervision.
 - `demos/anode_walkthrough.ipynb` gives a brief overview of the ANODE method (CATHODE's predecessor) for anomaly detection, which works analogous to weak supervision but constructs an explicit likelihood ratio using normalizing flows instead of training a classifier.
+- `demos/tree_classifier.ipynb` discusses the challenge of uninformative features in weakly supervised anomaly detection and demonstrates substantial improvement by using ensembles of boosted decision trees instead of neural networks.
 
 ## Installation
 
