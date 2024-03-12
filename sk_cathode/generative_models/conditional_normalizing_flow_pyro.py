@@ -80,6 +80,9 @@ class ConditionalNormalizingFlow(BaseEstimator):
         effect if no validation set is provided to the fit method.
     batch_size : int, default=128
         Batch size during training.
+    drop_last : bool, default=True
+        Whether to drop the last training batch if it is smaller
+        than the batch size.
     epochs : int, default=100
         Number of epochs to train for. In case early stopping is used,
         this is treated as an upper limit. Then also None can be provided,
@@ -96,8 +99,8 @@ class ConditionalNormalizingFlow(BaseEstimator):
                  pre_exp_tanh=False, batch_norm=True, batch_norm_momentum=0.1,
                  clips_logscale=[-3, 3], use_stable=False, lr=0.0001,
                  weight_decay=0.000001, early_stopping=False,
-                 patience=10, no_gpu=False, val_split=0.2,
-                 batch_size=256, epochs=100, verbose=False):
+                 patience=10, no_gpu=False, val_split=0.2, batch_size=256,
+                 drop_last=True, epochs=100, verbose=False):
 
         if model_type != "MAF":
             raise NotImplementedError
@@ -118,6 +121,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
         self.patience = patience
         self.val_split = val_split
         self.batch_size = batch_size
+        self.drop_last = drop_last
         self.epochs = epochs
         self.verbose = verbose
 
@@ -226,6 +230,10 @@ class ConditionalNormalizingFlow(BaseEstimator):
             "A finite number of epochs must be set if early stopping"
             " is not used!")
 
+        if self.drop_last:
+            assert X.shape[0] >= self.batch_size, (
+                "If drop_last is True, X needs to have at least as many"
+                " samples as the batch size!")
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
         if X_val is None and m_val is None:
@@ -256,10 +264,12 @@ class ConditionalNormalizingFlow(BaseEstimator):
         train_loader = numpy_to_torch_loader(X_train, m_train,
                                              batch_size=self.batch_size,
                                              shuffle=True,
+                                             drop_last=self.drop_last,
                                              device=self.device)
         val_loader = numpy_to_torch_loader(X_val, m_val,
                                            batch_size=self.batch_size,
                                            shuffle=True,
+                                           drop_last=False,
                                            device=self.device)
 
         # record also untrained losses
@@ -640,7 +650,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
 # utility functions
 
 def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
-                          device=torch.device("cpu")):
+                          drop_last=False, device=torch.device("cpu")):
     """Builds a torch DataLoader from numpy arrays.
 
     Parameters
@@ -653,6 +663,8 @@ def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
         Batch size.
     shuffle : bool, default=True
         Whether to shuffle the data.
+    drop_last : bool, default=False
+        Whether to drop the last batch if it is smaller than the batch size.
     device : torch.device, default=torch.device("cpu")
         Device to use.
 
@@ -665,7 +677,7 @@ def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
     m_torch = torch.from_numpy(m).type(torch.FloatTensor).to(device)
     dataset = torch.utils.data.TensorDataset(X_torch, m_torch)
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle)
+        dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last)
     return dataloader
 
 
