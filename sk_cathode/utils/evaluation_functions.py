@@ -268,7 +268,8 @@ def pulls_2d(data_ref, data_test, labels=None, bins=30,
 
         uncerts = np.sqrt(hist_ref + correction_factor**2 * hist_test)
 
-        pulls = (hist_ref - hist_test * correction_factor) / uncerts
+        with np.errstate(divide='ignore', invalid='ignore'):
+            pulls = (hist_ref - hist_test * correction_factor) / uncerts
 
         plt.bar(0.5*(binning[i][:-1]+binning[i][1:])[pulls > 0],
                 pulls[pulls > 0],
