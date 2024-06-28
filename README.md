@@ -18,9 +18,44 @@ The primary goal is to make these anomaly detection methods more accessible and 
 
 ## Installation
 
-Just clone via the usual way. The `requirements.txt` covers the necessary libraries to run the default demo notebook. 
+Just clone via the usual way. The `requirements.txt` covers the necessary libraries to run the default demo notebook.
 
 In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/). The `requirements_full.txt` includes these additional dependencies.
+
+## Overview of existing building blocks
+
+Below is a brief overview of the building blocks provided in the `sk_cathode/` directory, out of which one can build anomaly detection pipelines.
+
+### Generative models
+
+- `sk_cathode.generative_models.conditional_normalizing_flow_torch.ConditionalNormalizingFlow`: A conditional normalizing flow model  implemented directly in PyTorch.
+- `sk_cathode.generative_models.conditional_normalizing_flow_pyro.ConditionalNormalizingFlow`: A conditional normalizing flow model  implemented via the Pyro library.
+- `sk_cathode.generative_models.conditional_normalizing_flow_nflows.ConditionalNormalizingFlow`: A conditional normalizing flow model  implemented via nFlows.
+- `sk_cathode.generative_models.conditional_flow_matching.ConditionalFlowMatching`: A conditional flow matching model  implemented via PyTorch and the torchdyn ODE solver.
+
+### Classifier models
+
+- `sk_cathode.classifier_models.neural_network_classifier import NeuralNetworkClassifier`: A simple neural network classifier, implemented in PyTorch.
+- `sk_cathode.classifier_models.boosted_decision_tree import HGBClassifier`: A BDT classifier based on the HistGradientBoosting algorithm, implemented in scikit-learn.
+
+### Preprocessing and pipelines
+
+- `sk_cathode.utils.preprocessing.LogitScaler`: Preprocessing scaler class that performs a logit transformation.
+- `sk_cathode.utils.preprocessing.ExtStandardScaler`: Preprocessing scaler class that extends the scikit-learn StandardScaler to track jacobian determinants for correct density estimation.
+- `sk_cathode.utils.preprocessing.ExtPipeline`: Extension of scikit-learn pipeline to track jacobian determinants for correct density estimation.
+- `sk_cathode.utils.preprocessing.make_ext_pipeline`: Function for constructing an `ExtPipeline` object on a list of steps.
+
+### Ensembling
+
+- `sk_cathode.utils.ensembling_utils.EnsembleModel`: Wrapper class to combine multiple models into a single one.
+- `sk_cathode.utils.ensembling_utils.EpochEnsembleModel`: Wrapper class to build an ensemble from multiple epochs of the same training.
+
+### Evaluation
+
+- `sk_cathode.utils.evaluation_functions.sic_curve`: Function to compute the SIC curve.
+- `sk_cathode.utils.evaluation_functions.hists_2d`: Function to plot 2D correlation histograms.
+- `sk_cathode.utils.evaluation_functions.pulls_2d`: Function to plot 2D pulls between two multidimensional distributions in pairs.
+- `sk_cathode.utils.evaluation_functions.preds_2d`: Function to plot model predictions as a function of the input features pair-wise in 2D.
 
 ## Contributing
 
