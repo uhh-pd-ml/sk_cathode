@@ -35,8 +35,8 @@ Below is a brief overview of the building blocks provided in the `sk_cathode/` d
 
 ### Classifier models
 
-- `sk_cathode.classifier_models.neural_network_classifier import NeuralNetworkClassifier`: A simple neural network classifier, implemented in PyTorch.
-- `sk_cathode.classifier_models.boosted_decision_tree import HGBClassifier`: A BDT classifier based on the HistGradientBoosting algorithm, implemented in scikit-learn.
+- `sk_cathode.classifier_models.neural_network_classifier.NeuralNetworkClassifier`: A simple neural network classifier, implemented in PyTorch.
+- `sk_cathode.classifier_models.boosted_decision_tree.HGBClassifier`: A BDT classifier based on the HistGradientBoosting algorithm, implemented in scikit-learn.
 
 ### Preprocessing and pipelines
 
