@@ -515,6 +515,7 @@ def profile_1d(data, preds, bins):
     Helper function to compute the average predictions for the data
     in each bin, in 1D.
     """
+
     hist, edges = np.histogram(data, bins=bins)
     avg_preds = np.zeros_like(hist, dtype=float)
     avg_preds[:] = np.nan
@@ -547,11 +548,12 @@ def profile_2d(data_x, data_y, preds, bins):
     return avg_preds, xedges, yedges
 
 
-def rescale(x, range=(0.45, 0.55)):
+def rescale(x, input_range=(0.45, 0.55)):
     """
     Helper function to rescale the input to the range [0, 1].
     """
-    return (x - range[0]) / (range[1] - range[0])
+
+    return (x - input_range[0]) / (input_range[1] - input_range[0])
 
 
 def colormap_hist(data, colormap, bins, ax=None,
@@ -565,6 +567,6 @@ def colormap_hist(data, colormap, bins, ax=None,
 
     hist, binning = np.histogram(data, bins=bins, range=plot_range)
     x_vals = 0.5*(binning[:-1]+binning[1:])
-    color = colormap(rescale(x_vals, range=color_range))
+    color = colormap(rescale(x_vals, input_range=color_range))
     return ax.bar(x_vals, hist, color=color,
                   width=0.95*np.diff(binning)[0])
