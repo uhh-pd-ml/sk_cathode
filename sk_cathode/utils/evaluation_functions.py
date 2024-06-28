@@ -64,6 +64,49 @@ def sic_curve(y_true, y_score, pos_label=None, sample_weight=None):
 def hists_2d(data, labels=None, weights=None, n_features=None, bins=30,
              ranges=None, color_marginal="blue", color_2d="Blues",
              out_file=None, suppress_show=False, title=None):
+    """
+    Plot 2D histograms and marginal distributions for a given dataset.
+
+    Parameters
+    ----------
+    data: array-like of shape (n_samples, n_features)
+        The data to be plotted.
+
+    labels: list of str, default=None
+        The labels for the features.
+
+    weights: array-like of shape (n_samples,), default=None
+        The weights for the data points.
+
+    n_features: int, default=None
+        The number of features to be plotted. Only needed if not all
+        features in the data array should be plotted.
+
+    bins: int or sequence of scalars, default=30
+        The number of bins to use for the histograms.
+
+    ranges: list of tuple, default=None
+        The range for the features to be plotted.
+
+    color_marginal: str, default="blue"
+        The color for the marginal distributions.
+
+    color_2d: str, default="Blues"
+        The color map for the 2D correlation histograms.
+
+    out_file: str, default=None
+        The path to save the plot.
+
+    suppress_show: bool, default=False
+        Whether to suppress showing the plot interactively.
+
+    title: str, default=None
+        Title to draw into the figure.
+
+    Returns
+    -------
+    None
+    """
 
     if n_features is None:
         n_features = data.shape[1]
@@ -131,14 +174,62 @@ def hists_2d(data, labels=None, weights=None, n_features=None, bins=30,
         plt.show()
 
 
-def pulls_2d(data_num, data_denom, labels=None, bins=30,
-             ranges=None, numerator_binning=True,
-             weights_num=None, weights_denom=None,
+def pulls_2d(data_ref, data_test, labels=None, bins=30,
+             ranges=None, reference_binning=True,
+             weights_ref=None, weights_test=None,
              n_features=None, out_file=None, suppress_show=False):
+    """
+    Plot pulls between two datasets, in order to spot difference between the
+    distributions in 1D marginals and 2D correlations, i.e., for each bin it
+    draws (N_ref-N_test)/uncertainty. where N_ref is directly the number of
+    bin entries in data_ref and N_test arises from scaling data_test to the
+    same integral first. The uncertainty is the statistical uncertainty of
+    both N_ref and N_test. It is used to s
+
+    Parameters
+    ----------
+    data_ref: array-like of shape (n_samples, n_features)
+        The "reference data" to be plotted.
+
+    data_test: array-like of shape (n_samples, n_features)
+        The "test data" to be plotted.
+
+    labels: list of str, default=None
+        The labels for the features.
+
+    bins: int or sequence of scalars, default=30
+        The number of bins to use for the histograms.
+
+    ranges: list of tuple, default=None
+        The range for the features to be plotted.
+
+    reference_binning: bool, default=True
+        Whether to use the binning of the "reference data" for the "test data".
+
+    weights_ref: array-like of shape (n_samples,), default=None
+        The weights for the "reference data" points.
+
+    weights_test: array-like of shape (n_samples,), default=None
+        The weights for the "test data" points.
+
+    n_features: int, default=None
+        The number of features to be plotted. Only needed if not all
+        features in the data array should be plotted.
+
+    out_file: str, default=None
+        The path to save the plot.
+
+    suppress_show: bool, default=False
+        Whether to suppress showing the plot interactively.
+
+    Returns
+    -------
+    None
+    """
 
     if n_features is None:
-        assert data_num.shape[1] == data_denom.shape[1]
-        n_features = data_num.shape[1]
+        assert data_ref.shape[1] == data_test.shape[1]
+        n_features = data_ref.shape[1]
 
     if labels is None:
         labels = ["feature {}".format(i) for i in range(n_features)]
@@ -157,27 +248,27 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
 
         plt.subplot(gs[i, i])
 
-        if numerator_binning:
-            hist_num, binning[i] = np.histogram(data_num[:, i], bins=bins,
+        if reference_binning:
+            hist_ref, binning[i] = np.histogram(data_ref[:, i], bins=bins,
                                                 range=ranges[i],
-                                                weights=weights_num)
-            hist_denom, _ = np.histogram(data_denom[:, i], bins=binning[i],
-                                         weights=weights_denom)
+                                                weights=weights_ref)
+            hist_test, _ = np.histogram(data_test[:, i], bins=binning[i],
+                                        weights=weights_test)
         else:
-            hist_denom, binning[i] = np.histogram(data_denom[:, i], bins=bins,
-                                                  range=ranges[i],
-                                                  weights=weights_denom)
-            hist_num, _ = np.histogram(data_num[:, i], bins=binning[i],
-                                       weights=weights_num)
+            hist_test, binning[i] = np.histogram(data_test[:, i], bins=bins,
+                                                 range=ranges[i],
+                                                 weights=weights_test)
+            hist_ref, _ = np.histogram(data_ref[:, i], bins=binning[i],
+                                       weights=weights_ref)
 
-        scale_factor_denom = np.sum(hist_denom) * np.diff(binning[i])
-        scale_factor_num = np.sum(hist_num) * np.diff(binning[i])
+        scale_factor_test = np.sum(hist_test) * np.diff(binning[i])
+        scale_factor_ref = np.sum(hist_ref) * np.diff(binning[i])
 
-        correction_factor = scale_factor_num / scale_factor_denom
+        correction_factor = scale_factor_ref / scale_factor_test
 
-        uncerts = np.sqrt(hist_num + correction_factor**2 * hist_denom)
+        uncerts = np.sqrt(hist_ref + correction_factor**2 * hist_test)
 
-        pulls = (hist_num - hist_denom * correction_factor) / uncerts
+        pulls = (hist_ref - hist_test * correction_factor) / uncerts
 
         plt.bar(0.5*(binning[i][:-1]+binning[i][1:])[pulls > 0],
                 pulls[pulls > 0],
@@ -212,25 +303,25 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
 
             plt.subplot(gs[i, j])
 
-            hist_denom, bins_x, bins_y = np.histogram2d(
-                data_denom[:, j], data_denom[:, i],
-                weights=weights_denom,
+            hist_test, bins_x, bins_y = np.histogram2d(
+                data_test[:, j], data_test[:, i],
+                weights=weights_test,
                 bins=[binning[j], binning[i]])
-            hist_num, _, _ = np.histogram2d(
-                data_num[:, j], data_num[:, i],
-                weights=weights_num,
+            hist_ref, _, _ = np.histogram2d(
+                data_ref[:, j], data_ref[:, i],
+                weights=weights_ref,
                 bins=[binning[j], binning[i]])
 
-            scale_factor_denom = np.sum(hist_denom) * np.outer(np.diff(bins_x),
-                                                               np.diff(bins_y))
-            scale_factor_num = np.sum(hist_num) * np.outer(np.diff(bins_x),
+            scale_factor_test = np.sum(hist_test) * np.outer(np.diff(bins_x),
+                                                             np.diff(bins_y))
+            scale_factor_ref = np.sum(hist_ref) * np.outer(np.diff(bins_x),
                                                            np.diff(bins_y))
 
-            correction_factor = scale_factor_num / scale_factor_denom
+            correction_factor = scale_factor_ref / scale_factor_test
 
-            uncerts = np.sqrt(hist_num + correction_factor**2 * hist_denom)
+            uncerts = np.sqrt(hist_ref + correction_factor**2 * hist_test)
 
-            pulls = (hist_num - hist_denom * correction_factor) / uncerts
+            pulls = (hist_ref - hist_test * correction_factor) / uncerts
 
             im = plt.imshow(np.transpose(pulls), cmap="bwr",
                             norm=colors.Normalize(vmin=-3, vmax=3),
@@ -248,16 +339,16 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
             else:
                 plt.ylabel(labels[i])
 
-    if weights_denom is not None or weights_num is not None:
+    if weights_test is not None or weights_ref is not None:
         weights_ax = plt.subplot(gs[n_features-4, n_features-1])
-        if weights_denom is not None:
-            weights_ax.hist(weights_denom, bins=100, range=(0., 2.),
+        if weights_test is not None:
+            weights_ax.hist(weights_test, bins=100, range=(0., 2.),
                             histtype="step", color="cornflowerblue",
-                            label="denom")
-        if weights_num is not None:
-            weights_ax.hist(weights_num, bins=100, range=(0., 2.),
+                            label="test")
+        if weights_ref is not None:
+            weights_ax.hist(weights_ref, bins=100, range=(0., 2.),
                             histtype="step", color="orangered",
-                            label="num")
+                            label="reference")
         weights_ax.set_xlabel("weights")
         weights_ax.set_yscale("log")
 
@@ -271,55 +362,50 @@ def pulls_2d(data_num, data_denom, labels=None, bins=30,
         plt.show()
 
 
-def profile_1d(data, preds, bins):
-    hist, edges = np.histogram(data, bins=bins)
-    avg_preds = np.zeros_like(hist, dtype=float)
-    avg_preds[:] = np.nan
-
-    for i in range(len(hist)):
-        mask = (data >= edges[i]) & (data < edges[i+1])
-        if np.any(mask):
-            avg_preds[i] = np.mean(preds[mask])
-
-    return avg_preds, edges
-
-
-def profile_2d(data_x, data_y, preds, bins):
-
-    hist, xedges, yedges = np.histogram2d(data_x, data_y, bins=bins)
-    avg_preds = np.zeros_like(hist)
-    avg_preds[:] = np.nan
-
-    for i in range(hist.shape[0]):
-        for j in range(hist.shape[1]):
-            mask = (data_x >= xedges[i]) & (data_x < xedges[i+1]) & \
-                   (data_y >= yedges[j]) & (data_y < yedges[j+1])
-            if np.any(mask):
-                avg_preds[i, j] = np.mean(preds[mask])
-
-    return avg_preds, xedges, yedges
-
-
-def rescale(x, range=(0.45, 0.55)):
-    return (x - range[0]) / (range[1] - range[0])
-
-
-def colormap_hist(data, colormap, bins, ax=None,
-                  color_range=(0, 1), plot_range=None):
-
-    if ax is None:
-        ax = plt.gca()
-
-    hist, binning = np.histogram(data, bins=bins, range=plot_range)
-    x_vals = 0.5*(binning[:-1]+binning[1:])
-    color = colormap(rescale(x_vals, range=color_range))
-    return ax.bar(x_vals, hist, color=color,
-                  width=0.95*np.diff(binning)[0])
-
-
 def preds_2d(data, data_preds, labels=None, bins=30, ranges=None,
              centering=0.5, preds_range=(-0.05, 0.05),
              n_features=None, out_file=None, suppress_show=False):
+    """
+    Plot the predictions of a model as a function of the features.
+    Shows the features in 1D, as well as the 2D correlations between them.
+
+    Parameters
+    ----------
+    data: array-like of shape (n_samples, n_features)
+        The data containing the features to be plotted.
+
+    data_preds: array-like of shape (n_samples,)
+        The model predictions for the data.
+
+    labels: list of str, default=None
+        The labels for the features.
+
+    bins: int or sequence of scalars, default=30
+        The number of bins to use for the histograms.
+
+    ranges: list of tuple, default=None
+        The range for the features to be plotted.
+
+    centering: float, 'median' or 'mean', default=0.5
+        The value to subtract from the predictions.
+
+    preds_range: tuple, default=(-0.05, 0.05)
+        The range for the predictions (after subtraction).
+
+    n_features: int, default=None
+        The number of features to be plotted. Only needed if not all
+        features in the data array should be plotted.
+
+    out_file: str, default=None
+        The path to save the plot.
+
+    suppress_show: bool, default=False
+        Whether to suppress showing the plot interactively.
+
+    Returns
+    -------
+    None
+    """
 
     if n_features is None:
         n_features = data.shape[1]
@@ -421,3 +507,63 @@ def preds_2d(data, data_preds, labels=None, bins=30, ranges=None,
         plt.savefig(out_file)
     if not suppress_show:
         plt.show()
+
+
+def profile_1d(data, preds, bins):
+    """
+    Helper function to compute the average predictions for the data
+    in each bin, in 1D.
+    """
+    hist, edges = np.histogram(data, bins=bins)
+    avg_preds = np.zeros_like(hist, dtype=float)
+    avg_preds[:] = np.nan
+
+    for i in range(len(hist)):
+        mask = (data >= edges[i]) & (data < edges[i+1])
+        if np.any(mask):
+            avg_preds[i] = np.mean(preds[mask])
+
+    return avg_preds, edges
+
+
+def profile_2d(data_x, data_y, preds, bins):
+    """
+    Helper function to compute the average predictions for the data
+    in each bin, in 2D.
+    """
+
+    hist, xedges, yedges = np.histogram2d(data_x, data_y, bins=bins)
+    avg_preds = np.zeros_like(hist)
+    avg_preds[:] = np.nan
+
+    for i in range(hist.shape[0]):
+        for j in range(hist.shape[1]):
+            mask = (data_x >= xedges[i]) & (data_x < xedges[i+1]) & \
+                   (data_y >= yedges[j]) & (data_y < yedges[j+1])
+            if np.any(mask):
+                avg_preds[i, j] = np.mean(preds[mask])
+
+    return avg_preds, xedges, yedges
+
+
+def rescale(x, range=(0.45, 0.55)):
+    """
+    Helper function to rescale the input to the range [0, 1].
+    """
+    return (x - range[0]) / (range[1] - range[0])
+
+
+def colormap_hist(data, colormap, bins, ax=None,
+                  color_range=(0, 1), plot_range=None):
+    """
+    Helper function to plot a 1D histogram with a given colormap.
+    """
+
+    if ax is None:
+        ax = plt.gca()
+
+    hist, binning = np.histogram(data, bins=bins, range=plot_range)
+    x_vals = 0.5*(binning[:-1]+binning[1:])
+    color = colormap(rescale(x_vals, range=color_range))
+    return ax.bar(x_vals, hist, color=color,
+                  width=0.95*np.diff(binning)[0])
