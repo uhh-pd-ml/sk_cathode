@@ -22,9 +22,52 @@ Just clone via the usual way. The `requirements.txt` covers the necessary librar
 
 In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/). The `requirements_full.txt` includes these additional dependencies.
 
+## Shared class methods
+
+Just as scikit-learn estimators, the building blocks of `sk_cathode` share common methods, so they are easily interchangeable and can be stacked in a pipeline. A key extension to scikit-learn is that the jacobian determinants are tracked through the preprocessing steps, which is crucial to correctly transform estimated densities (if the dedicated extended pipeline class is used). Moreover, the extended pipeline supports conditional sampling.
+
+The shared methods per type of estimator are summarized below. In some models, not all methods might be implemented, either because of model-specific limitations or because no one had the time to do it (yet).
+
+In addition to an extended pipeline class, there is an ensemble model wrapper, which stacks multiple models in parallel and thus supports most methods below.
+
+### Generative model methods
+
+- `fit(X, m, X_val=None, m_val=None)`: Trains the model to learn `X` conditioned on `m`.
+- `transform(X, m=None)`: Transforms the provided data to the latent space.
+- `fit_transform(X, m, X_val=None, m_val=None)`: Trains the model and transforms the provided data to the latent space.
+- `inverse_transform(Xt, m=None)`: Transforms the latent space data to the original space.
+- `[log_]jacobian_determinant(X, m=None)`: Computes the [log] jacobian determinant of the transformation.
+- `inverse_[log_]jacobian_determinant(Xt, m=None)`: Computes the [log] jacobian determinant of the inverse transformation.
+- `sample(n_samples=1, m=None)`: Samples from the model with conditional values `m`.
+- `predict_[log_]proba(X, m=None)`: Computes the [log] likelihood of the data (per data point).
+- `score_samples(X, m=None)`: Alias for `predict_log_proba`.
+- `score(X, m=None)`: Computes the (summed) log likelihood over the full dataset.
+- `load_best_model()`: Loads the best model state from the provided save_path.
+- `load_train_loss()`: Loads the training loss from the provided save_path.
+- `load_val_loss()`: Loads the validation loss from the provided save_path.
+- `load_epoch_model(epoch)`: Loads the model state from the provided save_path at a specific epoch.
+
+### Classifier methods
+
+- `fit(X, y, X_val=None, y_val=None, sample_weight=None, sample_weight_val=None)`: Trains the model with data `X` and labels `y`.
+- `predict(X)`: Predicts the labels for the provided data.
+- `load_best_model()`: Loads the best model state from the provided save_path.
+- `load_train_loss()`: Loads the training loss from the provided save_path.
+- `load_val_loss()`: Loads the validation loss from the provided save_path.
+- `load_epoch_model(epoch)`: Loads the model state from the provided save_path at a specific epoch.
+
+### Preprocessing scaler methods
+
+- `fit(X, y=None)`: Fits the preprocessing step to the provided data.
+- `transform(X)`: Transforms the provided data.
+- `fit_transform(X, y=None)`: Fits the preprocessing step to the provided data and transforms it.
+- `inverse_transform(X)`: Inverse-transforms the provided data.
+- `[log_]jacobian_determinant(X)`: Computes the [log] jacobian determinant of the transformation (important for density estimation with preprocessing).
+- `inverse_[log_]jacobian_determinant(X)`: Computes the [log] jacobian determinant of the inverse transformation.
+
 ## Overview of existing building blocks
 
-Below is a brief overview of the building blocks provided in the `sk_cathode/` directory, out of which one can build anomaly detection pipelines.
+Below is a brief overview of the building blocks provided in `sk_cathode`, out of which one can build anomaly detection pipelines.
 
 ### Generative models
 
