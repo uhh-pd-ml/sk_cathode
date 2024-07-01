@@ -164,12 +164,12 @@ class ConditionalNormalizingFlow(BaseEstimator):
         ----------
         X : numpy.ndarray
             Input data.
-        y : numpy.ndarray
-            Target data.
+        m : numpy.ndarray
+            Conditional data.
         X_val : numpy.ndarray, optional
             Validation input data.
-        y_val : numpy.ndarray, optional
-            Validation target data.
+        m_val : numpy.ndarray, optional
+            Validation conditional data.
 
         Returns
         -------
@@ -281,12 +281,12 @@ class ConditionalNormalizingFlow(BaseEstimator):
         ----------
         X : numpy.ndarray
             Input data.
-        y : numpy.ndarray
-            Target data.
+        m : numpy.ndarray
+            Conditional data.
         X_val : numpy.ndarray, optional
             Validation input data.
-        y_val : numpy.ndarray, optional
-            Validation target data.
+        m_val : numpy.ndarray, optional
+            Validation conditional data.
 
         Returns
         -------
