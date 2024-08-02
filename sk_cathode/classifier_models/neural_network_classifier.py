@@ -84,7 +84,12 @@ class NeuralNetworkClassifier(BaseEstimator):
             self.clsf_model_path = join(save_path, "CLSF_models/")
         else:
             self.clsf_model_path = None
+        self.load = load
 
+        self.n_inputs = n_inputs
+        self.layers = layers
+        self.lr = lr
+        self.no_gpu = no_gpu
         self.model = NeuralNetwork(layers, n_inputs=n_inputs)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.loss = F.binary_cross_entropy

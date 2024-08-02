@@ -72,7 +72,7 @@ class ConditionalFlowMatching(BaseEstimator):
         self,
         save_path=None,
         load=False,
-        optimizer="Adam",
+        optimizer_name="Adam",
         num_inputs=4,
         num_cond_inputs=1,
         num_blocks=1,
@@ -88,7 +88,8 @@ class ConditionalFlowMatching(BaseEstimator):
         epochs=100,
         verbose=False
     ):
-        if optimizer != "Adam":
+        self.optimizer_name = optimizer_name
+        if optimizer_name != "Adam":
             raise NotImplementedError
 
         self.save_path = save_path
@@ -96,10 +97,17 @@ class ConditionalFlowMatching(BaseEstimator):
             self.de_model_path = join(save_path, "DE_models/")
         else:
             self.de_model_path = None
+        self.load = load
 
+        self.no_gpu = no_gpu
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
         self.num_inputs = num_inputs
+        self.num_cond_inputs = num_cond_inputs
+        self.num_blocks = num_blocks
+        self.activation_function = activation_function
+        self.lr = lr
+        self.weight_decay = weight_decay
         self.early_stopping = early_stopping
         self.patience = patience
         self.val_split = val_split

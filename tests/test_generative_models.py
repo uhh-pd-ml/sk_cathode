@@ -123,3 +123,9 @@ def test_score_samples(generative_model):
 def test_score(generative_model):
     score_output = generative_model.score(X_test, m_test)
     assert isinstance(score_output, float)
+
+
+@pytest.mark.parametrize("generative_model", generative_models)
+def test_print(generative_model):
+    print(generative_model)
+    assert True

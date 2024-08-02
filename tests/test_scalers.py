@@ -81,3 +81,9 @@ def test_inverse_jacobian_determinant(scaler):
     jacobian_output = scaler.inverse_jacobian_determinant(
         X_test)
     assert jacobian_output.shape == (X_test.shape[0], 1)
+
+
+@pytest.mark.parametrize("scaler", scalers)
+def test_print(scaler):
+    print(scaler)
+    assert True
