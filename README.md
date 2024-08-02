@@ -18,7 +18,20 @@ The primary goal is to make these anomaly detection methods more accessible and 
 
 ## Installation
 
-Just clone via the usual way. The `requirements.txt` covers the necessary libraries to run the default demo notebook.
+Just clone via the usual way, for example:
+
+```bash
+git clone git@github.com:uhh-pd-ml/sk_cathode.git
+cd sk_cathode
+```
+
+The `requirements.txt` covers the necessary libraries to run the default demo notebook. For example, one can create a fresh conda environment and install the dependencies with:
+
+```bash
+conda create -n "sk_cathode_env" python=3.9.7
+conda activate sk_cathode_env
+pip install -r requirements.txt
+```
 
 In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/). The `requirements_full.txt` includes these additional dependencies.
 
