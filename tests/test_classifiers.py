@@ -37,3 +37,9 @@ def test_fit(classifier_model):
 def test_predict(classifier_model):
     predict_output = classifier_model.predict(X_test)
     assert predict_output.shape == (X_test.shape[0], 1)
+
+
+@pytest.mark.parametrize("classifier_model", classifier_models)
+def test_print(classifier_model):
+    print(classifier_model)
+    assert True

@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+.vscode/
+
 demos/raw_data/
 demos/input_data/
 demos/input_data_deltaR/

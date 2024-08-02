@@ -57,11 +57,10 @@ class HGBClassifier(BaseEstimator):
         Whether to print progress during training.
     """
 
-    def __init__(self, *args, save_path=None, load=False,
+    def __init__(self, save_path=None, load=False,
                  max_bins=127,  early_stopping=True,
                  patience=10, max_iters=100, val_split=0.2,
-                 split_seed=None, use_class_weights=True, verbose=False,
-                 **kwargs):
+                 split_seed=None, use_class_weights=True, verbose=False):
 
         self.save_path = save_path
         if save_path is not None:
@@ -78,13 +77,10 @@ class HGBClassifier(BaseEstimator):
         self.split_seed = split_seed
         self.use_class_weights = use_class_weights
         self.verbose = verbose
-        self.args = args
-        self.kwargs = kwargs
 
         self.model = HistGradientBoostingClassifier(
-            *args, max_bins=max_bins, class_weight="balanced",
-            max_iter=1, early_stopping=False, warm_start=True,
-            **kwargs)
+            max_bins=max_bins, class_weight="balanced",
+            max_iter=1, early_stopping=False, warm_start=True)
 
         if split_seed is not None:
             self.model.split_seed = split_seed
