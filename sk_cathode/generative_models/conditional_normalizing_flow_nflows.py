@@ -82,7 +82,7 @@ class ConditionalNormalizingFlow(BaseEstimator):
         Whether to print progress during training.
     """
     def __init__(self, save_path=None, load=False,
-                 model_type="MAF", optimizer="Adam",
+                 model_type="MAF", optimizer_name="Adam",
                  num_inputs=4, num_cond_inputs=1, num_blocks=10,
                  num_hidden=64, num_layers=2, num_bins=8,
                  tail_bound=10, batch_norm=False, lr=0.0001,
@@ -90,9 +90,11 @@ class ConditionalNormalizingFlow(BaseEstimator):
                  patience=10, no_gpu=False, val_split=0.2, batch_size=256,
                  drop_last=True, epochs=100, verbose=False):
 
+        self.model_type = model_type
+        self.optimizer_name = optimizer_name
         if model_type != "MAF":
             raise NotImplementedError
-        if optimizer != "Adam":
+        if optimizer_name != "Adam":
             raise NotImplementedError
 
         self.save_path = save_path
@@ -100,7 +102,9 @@ class ConditionalNormalizingFlow(BaseEstimator):
             self.de_model_path = join(save_path, "DE_models/")
         else:
             self.de_model_path = None
+        self.load = load
 
+        self.no_gpu = no_gpu
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
         self.early_stopping = early_stopping
@@ -110,6 +114,17 @@ class ConditionalNormalizingFlow(BaseEstimator):
         self.drop_last = drop_last
         self.epochs = epochs
         self.verbose = verbose
+
+        self.num_inputs = num_inputs
+        self.num_cond_inputs = num_cond_inputs
+        self.num_blocks = num_blocks
+        self.num_hidden = num_hidden
+        self.num_layers = num_layers
+        self.num_bins = num_bins
+        self.tail_bound = tail_bound
+        self.batch_norm = batch_norm
+        self.lr = lr
+        self.weight_decay = weight_decay
 
         # metadata routing for pipeline
         # TODO implement same for jacobians and sampling
