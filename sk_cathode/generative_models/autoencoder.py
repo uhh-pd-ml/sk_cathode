@@ -11,9 +11,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 from tqdm import tqdm
 
-from .neural_network_classifier import numpy_to_torch_loader
-
-
 class AutoencoderModel(nn.Module):
     """A PyTorch module implementing a simple feed-forward neural network.
     """
@@ -47,7 +44,7 @@ class Autoencoder(BaseEstimator):
         Whether to load the model from save_path.
     n_inputs : int, default=4
         Number of input features.
-    layers : list, default=[64, 64, 64]
+    layers : list, default=[8, 32, 16, 2, 16, 32, 8]
         List of integers, specifying the number of nodes in each layer.
     lr : float, default=0.001
         Learning rate during training.
@@ -74,7 +71,7 @@ class Autoencoder(BaseEstimator):
     """
 
     def __init__(self, save_path=None, load=False, n_inputs=8,
-                 layers=[32, 16, 2,  16, 32], lr=0.001, early_stopping=False,
+                 layers=[8, 32, 16, 2,  16, 32, 8], lr=0.001, early_stopping=False,
                  patience=10, no_gpu=False, val_split=0.2, batch_size=128,
                  epochs=100, verbose=False):
 
@@ -84,9 +81,14 @@ class Autoencoder(BaseEstimator):
         else:
             self.clsf_model_path = None
 
+        self.layers = layers
+        self.n_inputs = n_inputs
+        self.lr = lr
+
         self.model = AutoencoderModel(layers, n_inputs=n_inputs)
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
         self.loss = F.mse_loss
+        self.no_gpu = no_gpu
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
         self.early_stopping = early_stopping
@@ -101,11 +103,35 @@ class Autoencoder(BaseEstimator):
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
 
+        self.load = load
+
         if load:
             self.load_best_model()
 
-    def predict(self, X):
-        """Predicts the class labels for the provided data.
+
+    def predict_proba(self, X):
+        """Runs input data through the model and computes reconstruction error (MSE loss) which 
+        can be used as an anomaly score
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+
+        Returns
+        -------
+        reco_error : numpy.ndarray
+            Reconstruction erorr (MSE loss) on each example
+        """
+
+        reco = self.transform(X)
+        reco_error = np.sum((X - reco)**2, axis = -1)
+
+        return reco_error
+
+
+    def transform(self, X):
+        """Compresses and decompresses the input data
 
         Parameters
         ----------
@@ -115,7 +141,7 @@ class Autoencoder(BaseEstimator):
         Returns
         -------
         prediction : numpy.ndarray
-            Predicted class labels.
+            Output array
         """
         with torch.no_grad():
             self.model.eval()
@@ -133,9 +159,9 @@ class Autoencoder(BaseEstimator):
             Input data.
         X_val : numpy.ndarray, optional
             Validation input data.
-        sample_weight : numpy.ndarray, optional
+        sample_weight : numpy.ndarray, optional (Not yet implemented!)
             Sample weights for the training data.
-        sample_weight_val : numpy.ndarray, optional
+        sample_weight_val : numpy.ndarray, optional  (Not yet implemented!)
             Sample weights for the validation data.
 
         Returns
@@ -147,6 +173,10 @@ class Autoencoder(BaseEstimator):
         assert not (self.epochs is None and not self.early_stopping), (
             "A finite number of epochs must be set if early stopping"
             " is not used!")
+
+        assert (sample_weight is None and sample_weight_val is None), (
+            "Sample weights for autoencoder training not yet implemented!")
+
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
@@ -192,15 +222,12 @@ class Autoencoder(BaseEstimator):
             pbar = tqdm(total=len(train_loader.dataset))
             epoch_train_loss = 0.
             epoch_val_loss = 0.
-            batch_weights = None
 
             for i, batch in enumerate(train_loader):
 
                 batch_inputs  = batch[0]
                 batch_inputs = batch_inputs.to(self.device)
                                            
-
-
                 self.optimizer.zero_grad()
                 batch_outputs = self.model(batch_inputs)
                 batch_loss = self.loss(batch_outputs, batch_inputs )
@@ -229,6 +256,7 @@ class Autoencoder(BaseEstimator):
                     batch_loss = self.loss(batch_outputs, batch_inputs)
                     epoch_val_loss += batch_loss.item()
                 epoch_val_loss /= (i+1)
+
             print("Validation loss:", epoch_val_loss)
 
             if epoch == 0:
