@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from nflows.transforms.splines import rational_quadratic as rqs
 
 def get_mask(in_features, out_features, in_flow_features, mask_type=None):
     """
@@ -517,110 +516,6 @@ class CouplingLayer(nn.Module):
             return (inputs - t) * s, -log_s.sum(-1, keepdim=True)
 
 
-class CouplingLayer_RQS(nn.Module):
-    """ An implementation of a coupling layer
-    from RealNVP (https://arxiv.org/abs/1605.08803)
-    with RQS trafo.
-    """
-
-    def __init__(self,
-                 num_inputs,
-                 num_hidden,
-                 mask,
-                 num_cond_inputs=None,
-                 act='tanh',
-                 num_RQS_bins=4,
-                 bound=False):
-        super(CouplingLayer_RQS, self).__init__()
-
-        self.num_inputs = num_inputs
-        self.register_buffer('mask', mask)
-        self.num_bins = num_RQS_bins
-
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-        act_func = activations[act]
-
-        self.bound = bound
-        if self.bound:
-            self.output_multiplier = (3*self.num_bins + 1)
-        else:
-            self.output_multiplier = (3*self.num_bins - 1)
-
-        if num_cond_inputs is not None:
-            total_inputs = int(mask.sum() + num_cond_inputs)
-        else:
-            total_inputs = int(mask.sum())
-
-        self.transformed_dimensions = num_inputs - int(self.mask.sum())
-        self.CL_net = nn.Sequential(
-            nn.Linear(total_inputs, num_hidden), act_func(),
-            nn.Linear(num_hidden, num_hidden), act_func(),
-            nn.Linear(num_hidden,
-                      self.transformed_dimensions * self.output_multiplier))
-
-        def init(m):
-            if isinstance(m, nn.Linear):
-                m.bias.data.fill_(0)
-                nn.init.orthogonal_(m.weight.data)
-
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        mask_index = [i for i in range(len(self.mask)) if self.mask[i]!=0]
-        inv_mask_index = [i for i in range(len(self.mask)) if self.mask[i]==0]
-        masked_inputs = inputs[:, mask_index]
-        if cond_inputs is not None:
-            masked_inputs = torch.cat([masked_inputs, cond_inputs], -1)
-        transformed_inputs = inputs[:, inv_mask_index]
-
-        params = self.CL_net(masked_inputs)
-        combined = torch.zeros_like(inputs)
-        if mode == 'direct':
-            outputs, logabsdet = self.elementwise(transformed_inputs, params)
-        else:
-            outputs, logabsdet = self.elementwise(transformed_inputs, params,
-                                                  inverse=True)
-        combined[:, mask_index] = inputs[:, mask_index]
-        combined[:, inv_mask_index] = outputs
-
-        return combined, logabsdet.unsqueeze(-1)
-
-    def elementwise(self, inputs, params, inverse=False):
-        batch_size, features = inputs.shape
-
-        transform_params = params.view(batch_size, self.output_multiplier,
-                                       features)
-        transform_params = torch.transpose(transform_params, 1, 2)
-
-        unnormalized_widths = transform_params[..., : self.num_bins]
-        unnormalized_heights = transform_params[..., self.num_bins:2*self.num_bins]
-        unnormalized_derivatives = transform_params[..., 2*self.num_bins:]
-
-        if self.bound:
-            outputs, logabsdet = rqs.rational_quadratic_spline(
-                inputs=inputs,
-                unnormalized_widths=unnormalized_widths,
-                unnormalized_heights=unnormalized_heights,
-                unnormalized_derivatives=unnormalized_derivatives,
-                inverse=inverse,
-                min_bin_width=1e-6,
-                min_bin_height=1e-6,
-                min_derivative=1e-6,
-                left=0., right=1.,
-                bottom=0., top=1.)
-        else:
-            outputs, logabsdet = rqs.unconstrained_rational_quadratic_spline(
-                inputs=inputs,
-                unnormalized_widths=unnormalized_widths,
-                unnormalized_heights=unnormalized_heights,
-                unnormalized_derivatives=unnormalized_derivatives,
-                inverse=inverse,
-                min_bin_width=1e-6,
-                min_bin_height=1e-6,
-                min_derivative=1e-6,
-                tails='linear',
-                tail_bound=12.)
-        return outputs, sum_except_batch(logabsdet)
-
-
 class FlowSequential(nn.Sequential):
     """ A sequential container for flows.
     In addition to a forward pass it implements a backward pass and
@@ -710,104 +605,6 @@ class FlowSequentialUniformBase(nn.Sequential):
         samples = self.forward(noise, cond_inputs, mode='inverse')[0]
         return samples
 
-class MADEwithRQS(nn.Module):
-    """ An implementation of MADE
-    (https://arxiv.org/abs/1502.03509) with RQS transformation
-    (https://arxiv.org/abs/1906.04032) taken from
-    https://github.com/bayesiains/nflows.
-    """
-
-    def __init__(self,
-                 num_inputs,
-                 num_hidden,
-                 num_cond_inputs=None,
-                 act='relu',
-                 pre_exp_tanh=False,
-                 num_bins=6,
-                 bound=False):
-        super(MADEwithRQS, self).__init__()
-
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-        act_func = activations[act]
-        self.num_bins = num_bins
-
-        input_mask = get_mask(
-            num_inputs, num_hidden, num_inputs, mask_type='input')
-        hidden_mask = get_mask(num_hidden, num_hidden, num_inputs)
-        self.bound = bound
-        if self.bound:
-            self.output_multiplier = (3*num_bins + 1)
-        else:
-            self.output_multiplier = (3*num_bins - 1)
-        output_mask = get_mask(
-            num_hidden, num_inputs * self.output_multiplier, num_inputs, mask_type='output')
-
-        self.joiner = nn.MaskedLinear(num_inputs, num_hidden, input_mask,
-                                      num_cond_inputs)
-
-        self.trunk = nn.Sequential(act_func(),
-                                   nn.MaskedLinear(num_hidden, num_hidden,
-                                                   hidden_mask), act_func(),
-                                   nn.MaskedLinear(num_hidden, num_inputs * self.output_multiplier,
-                                                   output_mask))
-
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        if mode == 'direct':
-            h = self.joiner(inputs, cond_inputs)
-            params = self.trunk(h)
-            outputs, logabsdet = self.elementwise_forward(inputs, params)
-        else:
-            x = torch.zeros_like(inputs)
-            for k in range(inputs.shape[1]):
-                h = self.joiner(x, cond_inputs)
-                params = self.trunk(h)
-                outputs, logabsdet = self.elementwise_inverse(inputs, params)
-                x[..., k] = outputs[..., k]
-        return outputs, logabsdet.unsqueeze(-1)
-
-    def elementwise_forward(self, inputs, autoregressive_params):
-        return self.elementwise(inputs, autoregressive_params)
-
-    def elementwise_inverse(self, inputs, autoregressive_params):
-        return self.elementwise(inputs, autoregressive_params, inverse=True)
-
-    def elementwise(self, inputs, autoregressive_params, inverse=False):
-        batch_size, features = inputs.shape[0], inputs.shape[1]
-
-        transform_params = autoregressive_params.view(batch_size, features, self.output_multiplier)
-        transform_params = autoregressive_params.view(batch_size, self.output_multiplier, features)
-        transform_params = torch.transpose(transform_params, 1, 2)
-
-        unnormalized_widths = transform_params[..., : self.num_bins]
-        unnormalized_heights = transform_params[..., self.num_bins : 2 * self.num_bins]
-        unnormalized_derivatives = transform_params[..., 2 * self.num_bins :]
-
-        if self.bound:
-            outputs, logabsdet = rqs.rational_quadratic_spline(
-                inputs=inputs,
-                unnormalized_widths=unnormalized_widths,
-                unnormalized_heights=unnormalized_heights,
-                unnormalized_derivatives=unnormalized_derivatives,
-                inverse=inverse,
-                min_bin_width=1e-6,
-                min_bin_height=1e-6,
-                min_derivative=1e-6,
-                left=0., right=1.,
-                bottom=0., top=1.)
-        else:
-            outputs, logabsdet = rqs.unconstrained_rational_quadratic_spline(
-                inputs=inputs,
-                unnormalized_widths=unnormalized_widths,
-                unnormalized_heights=unnormalized_heights,
-                unnormalized_derivatives=unnormalized_derivatives,
-                inverse=inverse,
-                min_bin_width=1e-6,
-                min_bin_height=1e-6,
-                min_derivative=1e-6,
-                tails='linear',
-                tail_bound=12.)
-
-        return outputs, sum_except_batch(logabsdet)
 
 def sum_except_batch(x, num_batch_dims=1):
     """Sums all elements of `x` except for the first `num_batch_dims` dimensions.
@@ -838,36 +635,6 @@ class CouplingLayerBlock(nn.Module):
                                   num_cond_inputs,
                                   s_act,
                                   t_act)
-                    for sub_mask in self.mask]
-        self.block = FlowSequential(*CL_block)
-
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        return self.block(inputs, cond_inputs=cond_inputs, mode=mode)
-
-
-class CouplingLayerBlock_RQS(nn.Module):
-    """ An implementation of a CL module"""
-
-    def __init__(self,
-                 num_inputs,
-                 num_hidden,
-                 num_cond_inputs=None,
-                 act='relu',
-                 mask_type='binary',
-                 num_RQS_bins=4,
-                 bound=False):
-        super(CouplingLayerBlock_RQS, self).__init__()
-
-        self.register_buffer('mask',
-                             get_CL_mask(num_inputs, mask_type=mask_type))
-
-        CL_block = [CouplingLayer_RQS(num_inputs,
-                                      num_hidden,
-                                      sub_mask,
-                                      num_cond_inputs=num_cond_inputs,
-                                      act=act,
-                                      num_RQS_bins=num_RQS_bins,
-                                      bound=bound)
                     for sub_mask in self.mask]
         self.block = FlowSequential(*CL_block)
 
