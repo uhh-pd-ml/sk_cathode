@@ -11,18 +11,21 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 from tqdm import tqdm
 
+
 class AutoencoderModel(nn.Module):
     """A PyTorch module implementing a simple feed-forward neural network.
     """
+
     def __init__(self, layers=[32, 16, 4, 16, 32], n_inputs=10):
         super().__init__()
 
         self.layers = []
-        for i,nodes in enumerate(layers):
+        for i, nodes in enumerate(layers):
             self.layers.append(nn.Linear(n_inputs, nodes))
 
-            #Don't add activation function for last layer
-            if(i < (len(layers) -1)): self.layers.append(nn.ReLU())
+            # Don't add activation function for last layer
+            if (i < (len(layers) - 1)):
+                self.layers.append(nn.ReLU())
             n_inputs = nodes
 
         self.model_stack = nn.Sequential(*self.layers)
@@ -70,10 +73,27 @@ class Autoencoder(BaseEstimator):
         Whether to print progress during training.
     """
 
-    def __init__(self, save_path=None, load=False, n_inputs=8,
-                 layers=[8, 32, 16, 2,  16, 32, 8], lr=0.001, early_stopping=False,
-                 patience=10, no_gpu=False, val_split=0.2, batch_size=128,
-                 epochs=100, verbose=False):
+    def __init__(
+            self,
+            save_path=None,
+            load=False,
+            n_inputs=8,
+            layers=[
+                8,
+                32,
+                16,
+                2,
+                16,
+                32,
+                8],
+            lr=0.001,
+            early_stopping=False,
+            patience=10,
+            no_gpu=False,
+            val_split=0.2,
+            batch_size=128,
+            epochs=100,
+            verbose=False):
 
         self.save_path = save_path
         if save_path is not None:
@@ -108,9 +128,8 @@ class Autoencoder(BaseEstimator):
         if load:
             self.load_best_model()
 
-
     def predict_proba(self, X):
-        """Runs input data through the model and computes reconstruction error (MSE loss) which 
+        """Runs input data through the model and computes reconstruction error (MSE loss) which
         can be used as an anomaly score
 
         Parameters
@@ -125,10 +144,9 @@ class Autoencoder(BaseEstimator):
         """
 
         reco = self.transform(X)
-        reco_error = np.sum((X - reco)**2, axis = -1)
+        reco_error = np.sum((X - reco)**2, axis=-1)
 
         return reco_error
-
 
     def transform(self, X):
         """Compresses and decompresses the input data
@@ -149,7 +167,7 @@ class Autoencoder(BaseEstimator):
             prediction = self.model.forward(X).detach().cpu().numpy()
         return prediction
 
-    def fit(self, X, X_val=None, 
+    def fit(self, X, X_val=None,
             sample_weight=None, sample_weight_val=None):
         """Fits (trains) the model to the provided data.
 
@@ -177,10 +195,9 @@ class Autoencoder(BaseEstimator):
         assert (sample_weight is None and sample_weight_val is None), (
             "Sample weights for autoencoder training not yet implemented!")
 
-
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
-        if X_val is None :
+        if X_val is None:
             if self.val_split is None or not (self.val_split > 0.
                                               and self.val_split < 1.):
                 raise ValueError("val_split is needs to be provided and lie "
@@ -225,12 +242,12 @@ class Autoencoder(BaseEstimator):
 
             for i, batch in enumerate(train_loader):
 
-                batch_inputs  = batch[0]
+                batch_inputs = batch[0]
                 batch_inputs = batch_inputs.to(self.device)
-                                           
+
                 self.optimizer.zero_grad()
                 batch_outputs = self.model(batch_inputs)
-                batch_loss = self.loss(batch_outputs, batch_inputs )
+                batch_loss = self.loss(batch_outputs, batch_inputs)
                 batch_loss.backward()
                 self.optimizer.step()
                 epoch_train_loss += batch_loss.item()
@@ -238,9 +255,9 @@ class Autoencoder(BaseEstimator):
                     pbar.update(batch_inputs.size(0))
                     pbar.set_description(
                         "Train loss: {:.6f}".format(
-                            epoch_train_loss / (i+1)))
+                            epoch_train_loss / (i + 1)))
 
-            epoch_train_loss /= (i+1)
+            epoch_train_loss /= (i + 1)
             if self.verbose:
                 pbar.close()
 
@@ -255,7 +272,7 @@ class Autoencoder(BaseEstimator):
                     batch_outputs = self.model(batch_inputs)
                     batch_loss = self.loss(batch_outputs, batch_inputs)
                     epoch_val_loss += batch_loss.item()
-                epoch_val_loss /= (i+1)
+                epoch_val_loss /= (i + 1)
 
             print("Validation loss:", epoch_val_loss)
 

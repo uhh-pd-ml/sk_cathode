@@ -3,7 +3,130 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 
 from matplotlib import colors
-from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_curve, roc_auc_score
+
+
+def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, labels=None, sic_max=20., roc_max=1e4, include_random=True):
+    """
+    Draw ROC and SIC curves from multiple sources on the same plots
+
+
+    Parameters
+    ----------
+    y_true : array-like of shape (n_samples,)
+        True binary labels. If labels are not either {-1, 1} or {0, 1}, then
+        pos_label should be explicitly given.
+
+    y_scores : array-like of shape (n_sources, n_samples)
+        Target scores, can either be probability estimates of the positive
+        class, confidence values, or non-thresholded measure of decisions
+        (as returned by "decision_function" on some classifiers).
+
+    pos_label : int, float, bool or str, default=None
+        The label of the positive class.
+        When ``pos_label=None``, if `y_true` is in {-1, 1} or {0, 1},
+        ``pos_label`` is set to 1, otherwise an error will be raised.
+
+    sample_weight : array-like of shape (n_samples,), default=None
+        Sample weights.
+
+    labels : array of strs, default=None,
+         Array of labels of the different methods being compared, 
+         Length should be n_sources
+
+     roc_max : float, default=1e4
+        Maximum value for y-axis of ROC plot
+
+     sic_max : float, default=20
+        Maximum value for y-axis of SIC plot
+
+     include_random : bool, default=True
+        Include a curve representing random guessing on the ROC and SIC plots
+
+
+    Returns
+    -------
+    sics : array-like of shape (>2), length of first dim is n_sources
+        SIC values for each source
+        Increasing SIC values: True Positive Rate / sqrt(False Positive Rate),
+        such that element i is the false positive rate of predictions with
+        score >= thresholds[i].
+
+    fprs : array of ndarrays of shape (>2,), length of first dim is n_sources
+        False positive rates for each source
+        Increasing false positive rates such that element i is the false
+        positive rate of predictions with score >= `thresholds[i]`.
+
+    tprs : array of ndarrays of shape (>2,), length of first dim is n_sources
+        True positive rates for each source
+        Increasing true positive rates such that element `i` is the true
+        positive rate of predictions with score >= `thresholds[i]`.
+
+    """
+
+    fs = 18
+    fs_leg = 16
+
+    eps = 1e-8
+
+    sics = []
+    tprs = []
+    fprs = []
+    if (labels is None):
+        labels = [""] * len(y_scores)
+
+    for idx in range(len(y_scores)):
+        sic, fpr, tpr, thresholds = sic_curve(
+            y_true, y_scores[idx], pos_label=pos_label, sample_weight=sample_weight)
+
+        auc_ = roc_auc_score(y_true, y_scores[idx])
+        fpr += eps
+
+        sics.append(sic)
+        tprs.append(tpr)
+        fprs.append(fpr)
+
+        lbl = 'auc %.3f' % auc_
+        labels[idx] = labels[idx] + ", auc=%.3f" % auc_
+        # print(lbl)
+
+    random_fpr = random_tpr = np.linspace(0, 1, 300)
+    random_bkg_rej = 1 / random_fpr
+    random_sic = random_tpr / np.sqrt(random_tpr)
+
+    # ROC plot
+    plt.figure(figsize=(10, 10))
+    for i in range(len(fprs)):
+        plt.plot(tprs[i], 1./fprs[i], lw=2, label=labels[i])
+
+    if (include_random):
+        plt.plot(random_tpr, random_bkg_rej, "w:", label="random")
+
+    plt.xlim([0, 1.0])
+    plt.xlabel('Signal Efficiency', fontsize=fs)
+    plt.yscale('log')
+    plt.ylim([1., roc_max])
+    plt.ylabel('Bkg Rejection Rate (1/ Bkg. Eff)', fontsize=fs)
+    plt.legend(loc="upper right", fontsize=fs_leg)
+
+    # SIC plot
+    plt.figure(figsize=(10, 10))
+    for i in range(len(fprs)):
+        plt.plot(fprs[i], sics[i], lw=2, label=labels[i])
+
+    if (include_random):
+        plt.plot(random_fpr, random_sic, "w:", label="random")
+
+    plt.xlim([0, 1.0])
+    plt.xlabel('Bkg Efficiency', fontsize=fs)
+    if (plt.gca().get_ylim()[1] > sic_max):
+        plt.ylim([0., sic_max])
+    else:
+        plt.ylim([0., sic_max])
+    plt.ylabel('Significance Improvement (SIC)', fontsize=fs)
+    plt.legend(loc="upper right", fontsize=fs_leg)
+
+    return sics, fprs, tprs
 
 
 def sic_curve(y_true, y_score, pos_label=None, sample_weight=None):
