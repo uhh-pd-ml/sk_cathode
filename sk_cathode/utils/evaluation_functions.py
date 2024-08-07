@@ -120,7 +120,11 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None,
 
     plt.xlim([0, 1.0])
     plt.xlabel("Bkg Efficiency", fontsize=font_size)
-    plt.ylim([0., sic_max])
+
+    #Rescale plot maximimum if too large, otherwise auto range is ok
+    if(plt.gca().get_ylim()[1] > sic_max):
+        plt.ylim([0., sic_max])
+
     plt.ylabel("Significance Improvement (SIC)", fontsize=font_size)
     plt.legend(loc="upper right", fontsize=font_size_legend)
 
