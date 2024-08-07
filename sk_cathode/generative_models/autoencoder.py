@@ -78,14 +78,7 @@ class Autoencoder(BaseEstimator):
             save_path=None,
             load=False,
             n_inputs=8,
-            layers=[
-                8,
-                32,
-                16,
-                2,
-                16,
-                32,
-                8],
+            layers=[8, 32, 16, 2, 16, 32, 8],
             lr=0.001,
             early_stopping=False,
             patience=10,
@@ -128,14 +121,17 @@ class Autoencoder(BaseEstimator):
         if load:
             self.load_best_model()
 
-    def predict_proba(self, X):
-        """Runs input data through the model and computes reconstruction error (MSE loss) which
+    def predict_proba(self, X, m=None):
+        """Runs input data through the model and computes reconstruction
+        error (MSE loss) which
         can be used as an anomaly score
 
         Parameters
         ----------
         X : numpy.ndarray
             Input data.
+        m : numpy.ndarray, optional
+            Not implemented for this model.
 
         Returns
         -------
@@ -143,31 +139,65 @@ class Autoencoder(BaseEstimator):
             Reconstruction erorr (MSE loss) on each example
         """
 
-        reco = self.transform(X)
+        if m is not None:
+            raise NotImplementedError(
+                "Conditional data not implemented for Autoencoder")
+
+        reco = self.transform(X, m=m)
         reco_error = np.sum((X - reco)**2, axis=-1)
 
         return reco_error
 
-    def transform(self, X):
+    def predict_log_proba(self, X, m=None):
+        """Runs input data through the model and computes the logarithmic
+        reconstruction error (MSE loss) which can be used as an anomaly score
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray, optional
+            Not implemented for this model.
+
+        Returns
+        -------
+        reco_error : numpy.ndarray
+            Log reconstruction erorr (MSE loss) on each example
+        """
+
+        if m is not None:
+            raise NotImplementedError(
+                "Conditional data not implemented for Autoencoder")
+
+        return np.log(self.predict_proba(X))
+
+    def transform(self, X, m=None):
         """Compresses and decompresses the input data
 
         Parameters
         ----------
         X : numpy.ndarray
             Input data.
+        m : numpy.ndarray, optional
+            Not implemented for this model.
 
         Returns
         -------
         prediction : numpy.ndarray
             Output array
         """
+
+        if m is not None:
+            raise NotImplementedError(
+                "Conditional data not implemented for Autoencoder")
+
         with torch.no_grad():
             self.model.eval()
             X = torch.from_numpy(X).type(torch.FloatTensor).to(self.device)
             prediction = self.model.forward(X).detach().cpu().numpy()
         return prediction
 
-    def fit(self, X, X_val=None,
+    def fit(self, X, m=None, X_val=None, m_val=None,
             sample_weight=None, sample_weight_val=None):
         """Fits (trains) the model to the provided data.
 
@@ -175,8 +205,12 @@ class Autoencoder(BaseEstimator):
         ----------
         X : numpy.ndarray
             Input data.
+        m : numpy.ndarray, optional
+            Not implemented for this model.
         X_val : numpy.ndarray, optional
             Validation input data.
+        m_val : numpy.ndarray, optional
+            Not implemented for this model.
         sample_weight : numpy.ndarray, optional (Not yet implemented!)
             Sample weights for the training data.
         sample_weight_val : numpy.ndarray, optional  (Not yet implemented!)
@@ -188,12 +222,17 @@ class Autoencoder(BaseEstimator):
             An instance of the classifier.
         """
 
+        if m is not None or m_val is not None:
+            raise NotImplementedError(
+                "Conditional data not implemented for Autoencoder")
+
         assert not (self.epochs is None and not self.early_stopping), (
             "A finite number of epochs must be set if early stopping"
             " is not used!")
 
-        assert (sample_weight is None and sample_weight_val is None), (
-            "Sample weights for autoencoder training not yet implemented!")
+        if sample_weight is not None or sample_weight_val is not None:
+            raise NotImplementedError(
+                "Sample weights for autoencoder training not yet implemented!")
 
         # allowing not to provide validation set, just for compatibility with
         # the sklearn API
@@ -305,6 +344,57 @@ class Autoencoder(BaseEstimator):
             self.load_best_model()
 
         return self
+
+    def fit_transform(self, X, m=None, X_val=None, m_val=None):
+        """Trains and then transforms the provided data to the latent space.
+
+        Parameters
+        ----------
+        X : numpy.ndarray
+            Input data.
+        m : numpy.ndarray
+            Not implemented for this model.
+        X_val : numpy.ndarray, optional
+            Validation input data.
+        m_val : numpy.ndarray, optional
+            Not implemented for this model.
+
+        Returns
+        -------
+        Xt : numpy.ndarray
+            Latent space representation of the input data.
+        """
+        return self.fit(X, m=m, X_val=X_val, m_val=m_val).transform(X, m=m)
+
+    def inverse_transform(self, Xt, m=None):
+        raise NotImplementedError(
+            "inverse_transform not implemented")
+
+    def log_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "log_jacobian_determinant not implemented")
+
+    def jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "jacobian_determinant not implemented")
+
+    def inverse_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "inverse_jacobian_determinant not implemented")
+
+    def inverse_log_jacobian_determinant(self, X, m=None):
+        raise NotImplementedError(
+            "inverse_log_jacobian_determinant not implemented")
+
+    def sample(self, n_samples=1, m=None):
+        raise NotImplementedError(
+            "sample not implemented")
+
+    def score_samples(self, X, m=None):
+        raise NotImplementedError("score_samples not implemented")
+
+    def score(self, X, m=None):
+        raise NotImplementedError("score not implemented")
 
     def load_best_model(self):
         """Loads the best model state from the provided save_path.
