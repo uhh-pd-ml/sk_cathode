@@ -5,6 +5,7 @@ from sk_cathode.generative_models.conditional_normalizing_flow_torch import Cond
 from sk_cathode.generative_models.conditional_normalizing_flow_pyro import ConditionalNormalizingFlow as GenerativeModelPyro  # noqa
 from sk_cathode.generative_models.conditional_normalizing_flow_nflows import ConditionalNormalizingFlow as GenerativeModelNflows  # noqa
 from sk_cathode.generative_models.conditional_flow_matching import ConditionalFlowMatching as GenerativeModelCFM  # noqa
+from sk_cathode.generative_models.autoencoder import Autoencoder as GenerativeModelAE  # noqa
 
 
 generative_models = [
@@ -12,6 +13,7 @@ generative_models = [
     GenerativeModelPyro(epochs=1, save_path=None,),
     GenerativeModelNflows(epochs=1, save_path=None,),
     GenerativeModelCFM(epochs=1, save_path=None,),
+    GenerativeModelAE(epochs=1, save_path=None,),
 ]
 X_test = np.random.rand(300, 4)
 m_test = np.random.rand(300, 1)
