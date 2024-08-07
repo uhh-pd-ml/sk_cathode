@@ -6,10 +6,11 @@ from matplotlib import colors
 from sklearn.metrics import roc_curve, roc_auc_score
 
 
-def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, labels=None, sic_max=20., roc_max=1e4, include_random=True):
+def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None,
+                     labels=None, sic_max=None, roc_max=1e4,
+                     include_random=True):
     """
-    Draw ROC and SIC curves from multiple sources on the same plots
-
+    Draw ROC and SIC curves from multiple sources on the same plots.
 
     Parameters
     ----------
@@ -31,7 +32,7 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, label
         Sample weights.
 
     labels : array of strs, default=None,
-         Array of labels of the different methods being compared, 
+         Array of labels of the different methods being compared,
          Length should be n_sources
 
      roc_max : float, default=1e4
@@ -61,23 +62,23 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, label
         True positive rates for each source
         Increasing true positive rates such that element `i` is the true
         positive rate of predictions with score >= `thresholds[i]`.
-
     """
 
-    fs = 18
-    fs_leg = 16
+    font_size = 18
+    font_size_legend = 16
 
     eps = 1e-8
 
     sics = []
     tprs = []
     fprs = []
-    if (labels is None):
+    if labels is None:
         labels = [""] * len(y_scores)
 
     for idx in range(len(y_scores)):
-        sic, fpr, tpr, thresholds = sic_curve(
-            y_true, y_scores[idx], pos_label=pos_label, sample_weight=sample_weight)
+        sic, fpr, tpr, _ = sic_curve(
+            y_true, y_scores[idx], pos_label=pos_label,
+            sample_weight=sample_weight)
 
         auc_ = roc_auc_score(y_true, y_scores[idx])
         fpr += eps
@@ -86,9 +87,7 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, label
         tprs.append(tpr)
         fprs.append(fpr)
 
-        lbl = 'auc %.3f' % auc_
-        labels[idx] = labels[idx] + ", auc=%.3f" % auc_
-        # print(lbl)
+        labels[idx] = labels[idx] + f", auc={auc_:.3f}"
 
     random_fpr = random_tpr = np.linspace(0, 1, 300)
     random_bkg_rej = 1 / random_fpr
@@ -100,14 +99,15 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, label
         plt.plot(tprs[i], 1./fprs[i], lw=2, label=labels[i])
 
     if (include_random):
-        plt.plot(random_tpr, random_bkg_rej, "w:", label="random")
+        plt.plot(random_tpr, random_bkg_rej, color=plt.rcParams["text.color"],
+                 linestyle=":", label="random")
 
     plt.xlim([0, 1.0])
-    plt.xlabel('Signal Efficiency', fontsize=fs)
-    plt.yscale('log')
+    plt.xlabel("Signal Efficiency", fontsize=font_size)
+    plt.yscale("log")
     plt.ylim([1., roc_max])
-    plt.ylabel('Bkg Rejection Rate (1/ Bkg. Eff)', fontsize=fs)
-    plt.legend(loc="upper right", fontsize=fs_leg)
+    plt.ylabel("Bkg Rejection Rate (1/ Bkg. Eff)", fontsize=font_size)
+    plt.legend(loc="upper right", fontsize=font_size_legend)
 
     # SIC plot
     plt.figure(figsize=(10, 10))
@@ -115,16 +115,14 @@ def plot_roc_and_sic(y_true, y_scores, pos_label=None, sample_weight=None, label
         plt.plot(fprs[i], sics[i], lw=2, label=labels[i])
 
     if (include_random):
-        plt.plot(random_fpr, random_sic, "w:", label="random")
+        plt.plot(random_fpr, random_sic, color=plt.rcParams["text.color"],
+                 linestyle=":", label="random")
 
     plt.xlim([0, 1.0])
-    plt.xlabel('Bkg Efficiency', fontsize=fs)
-    if (plt.gca().get_ylim()[1] > sic_max):
-        plt.ylim([0., sic_max])
-    else:
-        plt.ylim([0., sic_max])
-    plt.ylabel('Significance Improvement (SIC)', fontsize=fs)
-    plt.legend(loc="upper right", fontsize=fs_leg)
+    plt.xlabel("Bkg Efficiency", fontsize=font_size)
+    plt.ylim([0., sic_max])
+    plt.ylabel("Significance Improvement (SIC)", fontsize=font_size)
+    plt.legend(loc="upper right", fontsize=font_size_legend)
 
     return sics, fprs, tprs
 
