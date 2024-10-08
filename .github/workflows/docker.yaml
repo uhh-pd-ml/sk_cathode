@@ -21,7 +21,7 @@ on:
       - 'requirements_full.txt'
 
 env:
-  CONTAINER_REGISTRY: jobirk
+  CONTAINER_REGISTRY: ${{ vars.DOCKERHUB_USERNAME }}
   IMAGE_NAME: sk_cathode
 
 jobs:
