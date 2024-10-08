@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - '*'
+    # we only want to run the workflow if one of the relevant files has changed
     paths:
       - 'Dockerfile'
       - 'requirements.txt'
@@ -35,7 +36,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build image
-        run: docker build -f docker/Dockerfile --tag ${CONTAINER_REGISTRY}/${IMAGE_NAME}:latest docker
+        run: docker build -f Dockerfile --tag ${CONTAINER_REGISTRY}/${IMAGE_NAME}:latest docker
 
       # Login and push this image if this is on the main branch
       - name: Login to Dockerhub container registry
@@ -58,7 +59,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Build image
-        run: docker build -f docker/Dockerfile --tag ${CONTAINER_REGISTRY}/${IMAGE_NAME}:${{  github.ref_name  }} docker
+        run: docker build -f Dockerfile --tag ${CONTAINER_REGISTRY}/${IMAGE_NAME}:${{  github.ref_name  }} docker
 
       - name: Login to Dockerhub container registry
         run: docker login -u ${{ vars.DOCKERHUB_USERNAME }} -p ${{ secrets.DOCKERHUB_TOKEN }}

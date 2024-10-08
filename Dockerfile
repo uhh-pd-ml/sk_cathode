@@ -16,4 +16,4 @@ RUN apt-get update && apt-get install -y python3-venv
 RUN python3 -m venv sk_cathode_venv 
 RUN /sk_cathode/sk_cathode_venv/bin/python3 -m pip install --upgrade pip
 RUN . sk_cathode_venv/bin/activate 
-RUN pip install -r requirements.txt
+# RUN pip install -r requirements.txt
