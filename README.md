@@ -1,5 +1,25 @@
 # sk_cathode
 
+**Table of Contents**
+- [sk\_cathode](#sk_cathode)
+  - [Core idea](#core-idea)
+  - [Demos](#demos)
+  - [Installation](#installation)
+    - [Docker image](#docker-image)
+    - [Installation via pip](#installation-via-pip)
+  - [Shared class methods](#shared-class-methods)
+    - [Generative model methods](#generative-model-methods)
+    - [Classifier methods](#classifier-methods)
+    - [Preprocessing scaler methods](#preprocessing-scaler-methods)
+  - [Overview of existing building blocks](#overview-of-existing-building-blocks)
+    - [Generative models](#generative-models)
+    - [Classifier models](#classifier-models)
+    - [Preprocessing and pipelines](#preprocessing-and-pipelines)
+    - [Ensembling](#ensembling)
+    - [Evaluation](#evaluation)
+  - [Contributing](#contributing)
+
+
 ## Core idea
 
 This (work-in-progress) repo aims to illustrate how to deploy anomaly detection models such as [CATHODE](https://arxiv.org/abs/2109.00546) and [LaCATHODE](https://arxiv.org/abs/2210.14924) by hiding technical implementation details behind a scikit-learn-like API.
@@ -19,6 +39,31 @@ The primary goal is to make these anomaly detection methods more accessible and 
 - `demos/autoencoder_gauss.ipynb` introduces a different paradigm for anomaly detection, namely outlier detection based on autoencoders. The working principle is illustrated on a Gaussian toy dataset.
 
 ## Installation
+
+### Docker image
+
+We provide a Docker image with all necessary dependencies installed.
+To start an interactive container **with Docker**, one can use the following
+command:
+
+```bash
+docker run -it --rm jobirk/sk_cathode:latest bash
+```
+
+To start an interactive container **with Singularity**, one can use the
+following command:
+```bash
+singularity shell docker://jobirk/sk_cathode:latest
+```
+
+You can then activate the virtual environment inside the container with the 
+following command:
+
+```bash
+source /sk_cathode/sk_cathode_venv/bin/activate
+```
+
+### Installation via pip
 
 Just clone via the usual way, for example:
 
