@@ -63,7 +63,7 @@ following command:
 source /sk_cathode/sk_cathode_venv/bin/activate
 ```
 
-### Installation via pip
+### Installation via conda/pip
 
 Just clone via the usual way, for example:
 
