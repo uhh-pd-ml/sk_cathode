@@ -56,6 +56,8 @@ following command:
 singularity shell docker://jobirk/sk_cathode:latest
 ```
 
+To use the singularity container in combination with VSCode, follow the [instructions in `joschkabirk/docker-template`](https://github.com/joschkabirk/docker-template?tab=readme-ov-file#set-up-vscode-for-remote-development-with-singularity).
+
 ### Installation via conda/pip
 
 Just clone via the usual way, for example:
