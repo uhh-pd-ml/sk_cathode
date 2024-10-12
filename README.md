@@ -56,13 +56,6 @@ following command:
 singularity shell docker://jobirk/sk_cathode:latest
 ```
 
-You can then activate the virtual environment inside the container with the 
-following command:
-
-```bash
-source /sk_cathode/sk_cathode_venv/bin/activate
-```
-
 ### Installation via conda/pip
 
 Just clone via the usual way, for example:
