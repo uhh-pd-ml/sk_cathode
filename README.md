@@ -6,7 +6,7 @@
   - [Demos](#demos)
   - [Installation](#installation)
     - [Docker image](#docker-image)
-    - [Installation via pip](#installation-via-pip)
+    - [Installation via conda/pip](#installation-via-condapip)
   - [Shared class methods](#shared-class-methods)
     - [Generative model methods](#generative-model-methods)
     - [Classifier methods](#classifier-methods)
@@ -56,7 +56,47 @@ following command:
 singularity shell docker://jobirk/sk_cathode:latest
 ```
 
-To use the singularity container in combination with VSCode, follow the [instructions in `joschkabirk/docker-template`](https://github.com/joschkabirk/docker-template?tab=readme-ov-file#set-up-vscode-for-remote-development-with-singularity).
+General info about how to run a singularity container in combination with VSCode, can be 
+found in the [instructions in `joschkabirk/docker-template`](https://github.com/joschkabirk/docker-template?tab=readme-ov-file#set-up-vscode-for-remote-development-with-singularity).
+
+The instructions below are tested on the DESY Maxwell cluster.
+
+1. Create folders for the Singularity cache and temporary files:
+```bash
+mkdir -p /gpfs/dust/maxwell/user/$USER/.singularity/cache
+mkdir -p /gpfs/dust/maxwell/user/$USER/.singularity/tmp
+mkdir -p /gpfs/dust/maxwell/user/$USER/singularity_images
+```
+2. Tell singularity to use these folders by adding the following lines to your `~/.bashrc`/`~/.zshrc`:
+```bash
+export SINGULARITY_CACHEDIR=/gpfs/dust/maxwell/user/$USER/.singularity/cache
+export SINGULARITY_TMPDIR=/gpfs/dust/maxwell/user/$USER/.singularity/tmp
+```
+3. Pull the image from the Docker Hub and convert into a Singularity image.
+NOTE: this takes quite some time and is not required if a colleague (who works
+on the same cluster) has already done this and provides you access to their
+`.sif` file.
+```bash
+singularity build /gpfs/dust/maxwell/user/$USER/singularity_images/sk_cathode.sif docker://jobirk/sk_cathode:latest
+```
+4. Setup the VSCode connection to Maxwell. Add the following entry to your `~/.ssh/config`. This tells VSCode to start the whole remote development environment with Singularity on Maxwell.
+```
+Host sk_cathode_demo
+    RemoteCommand export SINGULARITY_CACHEDIR=<your_cachedir> && export SINGULARITY_TMPDIR=<your_tmpdir> && singularity exec --nv -B /beegfs/desy/user -B /gpfs/dust/maxwell/user <path_to_the_sif_file> /bin/zsh
+    User <your_username>
+    HostName max-display004.desy.de
+    RequestTTY yes
+```
+5. Set the install path of the corresponding VSCode container extension in the `settings.json` file (local VSCode settings):
+```json
+"remote.SSH.serverInstallPath": {
+    "sk_cathode_demo": "<some_path_where_you_have_enough_space>"
+}
+```
+6. Now connect to this host in VSCode, open your folder where you have the things you want
+to run, and install the jupyter extension (to run notebooks in VSCode):
+![](https://syncandshare.desy.de/index.php/s/m355983ZtRxFYzx/download)
+
 
 ### Installation via conda/pip
 
