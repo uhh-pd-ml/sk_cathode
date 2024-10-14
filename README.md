@@ -6,6 +6,8 @@
   - [Demos](#demos)
   - [Installation](#installation)
     - [Docker image](#docker-image)
+      - [General way to run the Docker image](#general-way-to-run-the-docker-image)
+      - [VSCode+Singularity on Maxwell](#vscodesingularity-on-maxwell)
     - [Installation via conda/pip](#installation-via-condapip)
   - [Shared class methods](#shared-class-methods)
     - [Generative model methods](#generative-model-methods)
@@ -43,6 +45,9 @@ The primary goal is to make these anomaly detection methods more accessible and 
 ### Docker image
 
 We provide a Docker image with all necessary dependencies installed.
+
+#### General way to run the Docker image
+
 To start an interactive container **with Docker**, one can use the following
 command:
 
@@ -55,6 +60,10 @@ following command:
 ```bash
 singularity shell docker://jobirk/sk_cathode:latest
 ```
+NOTE: If you or one of your colleagues has already converted the Docker image to a 
+Singularity image (using `singularity build`), you can use the `.sif` file directly.
+
+#### VSCode+Singularity on Maxwell
 
 General info about how to run a singularity container in combination with VSCode, can be 
 found in the [instructions in `joschkabirk/docker-template`](https://github.com/joschkabirk/docker-template?tab=readme-ov-file#set-up-vscode-for-remote-development-with-singularity).
