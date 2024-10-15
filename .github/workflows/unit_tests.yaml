@@ -3,6 +3,9 @@ name: Unit tests
 on:
   push:
     branches: [ 'main', 'github-checks']
+    # only trigger workflow on changes in the sk_cathode subdirectory
+    paths:
+        - 'sk_cathode/**'
   pull_request:
     branches: [ '*' ]
 
