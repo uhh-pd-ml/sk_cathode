@@ -8,7 +8,6 @@ from os import makedirs
 from os.path import join
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
-from sklearn.utils import class_weight
 from tqdm import tqdm
 
 
