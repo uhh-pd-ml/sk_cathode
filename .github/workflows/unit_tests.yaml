@@ -2,9 +2,10 @@ name: Unit tests
 
 on:
   push:
-    # only trigger workflow on changes in the sk_cathode subdirectory
+    # only trigger workflow on changes in a relevant subdirectory
     paths:
         - 'sk_cathode/**'
+        - 'tests/**'
   pull_request:
     branches: [ '*' ]
 
