@@ -1,5 +1,27 @@
 # sk_cathode
 
+**Table of Contents**
+- [sk\_cathode](#sk_cathode)
+  - [Core idea](#core-idea)
+  - [Demos](#demos)
+  - [Installation](#installation)
+    - [Installation via conda/pip](#installation-via-condapip)
+    - [Docker image](#docker-image)
+  - [Shared class methods](#shared-class-methods)
+    - [Generative model methods](#generative-model-methods)
+    - [Classifier methods](#classifier-methods)
+    - [Preprocessing scaler methods](#preprocessing-scaler-methods)
+  - [Overview of existing building blocks](#overview-of-existing-building-blocks)
+    - [Generative models](#generative-models)
+    - [Classifier models](#classifier-models)
+    - [Preprocessing and pipelines](#preprocessing-and-pipelines)
+    - [Ensembling](#ensembling)
+    - [Evaluation](#evaluation)
+  - [Contributing](#contributing)
+  - [Appendix](#appendix)
+    - [VSCode+Singularity on Maxwell](#vscodesingularity-on-maxwell)
+
+
 ## Core idea
 
 This (work-in-progress) repo aims to illustrate how to deploy anomaly detection models such as [CATHODE](https://arxiv.org/abs/2109.00546) and [LaCATHODE](https://arxiv.org/abs/2210.14924) by hiding technical implementation details behind a scikit-learn-like API.
@@ -20,6 +42,9 @@ The primary goal is to make these anomaly detection methods more accessible and 
 
 ## Installation
 
+
+### Installation via conda/pip
+
 Just clone via the usual way, for example:
 
 ```bash
@@ -36,6 +61,28 @@ pip install -r requirements.txt
 ```
 
 In order to run the Normalizing Flow with Pyro backend, one further needs to install [Pyro](https://pyro.ai/). For the Conditional Flow Matching generative model, one needs to install [torchdyn](https://torchdyn.org/). The `requirements_full.txt` includes these additional dependencies.
+
+
+### Docker image
+
+We provide a Docker image with all necessary dependencies installed.
+
+To start an interactive container **with Docker**, you can use the following
+command:
+
+```bash
+docker run -it --rm jobirk/sk_cathode:latest bash
+```
+
+To start an interactive container **with Singularity**, you can use the
+following command:
+```bash
+singularity shell docker://jobirk/sk_cathode:latest
+```
+NOTE: If you or one of your colleagues has already converted the Docker image to a 
+Singularity image (using `singularity build`), you can use corresponding
+the `.sif` file directly and replace the `docker://jobirk/sk_cathode:latest` part 
+in the command above with the path to the `.sif` file.
 
 ## Shared class methods
 
@@ -120,3 +167,50 @@ Below is a brief overview of the building blocks provided in `sk_cathode`, out o
 ## Contributing
 
 The repo is very much open for contributions via pull requests, e.g. to add more classifiers and generative models, other ways of doing anomaly detection, or just an illustrative demo notebook highlighting a particular study. For questions, feel free to contact `manuel.sommerhalder[at]uni-hamburg.de`.
+
+## Appendix
+
+### VSCode+Singularity on Maxwell
+
+This section provides a brief guide on how to set up a VSCode connection to the DESY Maxwell 
+cluster, using Singularity containers.
+Setting things up on other HPC clusters should be similar.
+
+
+1. Create folders for the Singularity cache and temporary files:
+```bash
+mkdir -p /gpfs/dust/maxwell/user/$USER/.singularity/cache
+mkdir -p /gpfs/dust/maxwell/user/$USER/.singularity/tmp
+mkdir -p /gpfs/dust/maxwell/user/$USER/singularity_images
+```
+2. Tell singularity to use these folders by adding the following lines to your `~/.bashrc`/`~/.zshrc`:
+```bash
+export SINGULARITY_CACHEDIR=/gpfs/dust/maxwell/user/$USER/.singularity/cache
+export SINGULARITY_TMPDIR=/gpfs/dust/maxwell/user/$USER/.singularity/tmp
+```
+3. Pull the image from the Docker Hub and convert into a Singularity image.
+NOTE: this takes quite some time and is not required if a colleague (who works
+on the same cluster) has already done this and provides you access to their
+`.sif` file.
+```bash
+singularity build /gpfs/dust/maxwell/user/$USER/singularity_images/sk_cathode.sif docker://jobirk/sk_cathode:latest
+```
+4. Setup the VSCode connection to Maxwell. Add the following entry to your `~/.ssh/config`. This tells VSCode to start the whole remote development environment with Singularity on Maxwell.
+```
+Host sk_cathode_demo
+    RemoteCommand export SINGULARITY_CACHEDIR=<your_cachedir> && export SINGULARITY_TMPDIR=<your_tmpdir> && singularity exec --nv -B /beegfs/desy/user -B /gpfs/dust/maxwell/user <path_to_the_sif_file> /bin/zsh
+    User <your_username>
+    HostName max-display004.desy.de
+    RequestTTY yes
+```
+5. Set the install path of the corresponding VSCode container extension in the `settings.json` file (local VSCode settings):
+```json
+"remote.SSH.serverInstallPath": {
+    "sk_cathode_demo": "<some_path_where_you_have_enough_space>"
+}
+"remote.SSH.enableRemoteCommand": true,
+```
+6. Now connect to this host in VSCode, open your folder where you have the things you want
+to run, and install the jupyter extension (to run notebooks in VSCode):
+![](https://syncandshare.desy.de/index.php/s/m355983ZtRxFYzx/download)
+
