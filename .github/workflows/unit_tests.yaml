@@ -1,0 +1,17 @@
+name: Unit tests
+
+on:
+  push:
+    branches: [ 'main', 'github-checks']
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    container:
+      image: jobirk/sk_cathode:latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Test with pytest
+        run: pytest
