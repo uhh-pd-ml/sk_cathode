@@ -1,5 +1,4 @@
 import math
-import types
 
 import numpy as np
 import scipy as sp
@@ -159,6 +158,7 @@ class MADESplit(nn.Module):
                     a[:, i_col]) + m[:, i_col]
             return x, -a.sum(-1, keepdim=True)
 
+
 class MADE(nn.Module):
     """ An implementation of MADE
     (https://arxiv.org/abs/1502.03509s).
@@ -304,7 +304,7 @@ class ActNorm(nn.Module):
         self.initialized = False
 
     def forward(self, inputs, cond_inputs=None, mode='direct'):
-        if self.initialized == False:
+        if self.initialized is False:
             self.weight.data.copy_(torch.log(1.0 / (inputs.std(0) + 1e-12)))
             self.bias.data.copy_(inputs.mean(0))
             self.initialized = True
@@ -365,13 +365,13 @@ class LUInvertibleMM(nn.Module):
         self.sign_S = torch.from_numpy(sign_S)
         self.log_S = nn.Parameter(torch.from_numpy(log_S))
 
-        self.I = torch.eye(self.L.size(0))
+        self.I = torch.eye(self.L.size(0))  # noqa
 
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if str(self.L_mask.device) != str(self.L.device):
             self.L_mask = self.L_mask.to(self.L.device)
             self.U_mask = self.U_mask.to(self.L.device)
-            self.I = self.I.to(self.L.device)
+            self.I = self.I.to(self.L.device)  # noqa
             self.P = self.P.to(self.L.device)
             self.sign_S = self.sign_S.to(self.L.device)
 
@@ -414,6 +414,7 @@ class InfiniteToFinite(nn.Module):
             ret = torch.log(inputs/(1.-inputs))
             logabsdet = - torch.log(inputs - inputs**2)
             return ret, logabsdet.sum(dim=-1).unsqueeze(-1)
+
 
 class Shuffle(nn.Module):
     """ An implementation of a shuffling layer from
@@ -471,7 +472,7 @@ class CouplingLayer(nn.Module):
 
         self.num_inputs = num_inputs
         self.register_buffer("mask", mask)
-        #self.mask = mask
+        # self.mask = mask
 
         activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
         s_act_func = activations[s_act]
@@ -497,7 +498,7 @@ class CouplingLayer(nn.Module):
                 nn.init.orthogonal_(m.weight.data)
 
     def forward(self, inputs, cond_inputs=None, mode='direct'):
-        #mask = torch.from_numpy(np.tile(self.mask, (inputs.shape[0], 1)))
+        # mask = torch.from_numpy(np.tile(self.mask, (inputs.shape[0], 1)))
         mask = self.mask.repeat(inputs.shape[0], 1)
 
         masked_inputs = inputs * mask
@@ -545,7 +546,7 @@ class FlowSequential(nn.Sequential):
 
         return inputs, logdets
 
-    def log_probs(self, inputs, cond_inputs = None):
+    def log_probs(self, inputs, cond_inputs=None):
         u, log_jacob = self(inputs, cond_inputs)
         log_probs = (-0.5 * u.pow(2) - 0.5 * math.log(2 * math.pi)).sum(
             -1, keepdim=True)
@@ -560,6 +561,7 @@ class FlowSequential(nn.Sequential):
             cond_inputs = cond_inputs.to(device)
         samples = self.forward(noise, cond_inputs, mode='inverse')[0]
         return samples
+
 
 class FlowSequentialUniformBase(nn.Sequential):
     """ A sequential container for flows.
@@ -591,7 +593,7 @@ class FlowSequentialUniformBase(nn.Sequential):
 
         return inputs, logdets
 
-    def log_probs(self, inputs, cond_inputs = None):
+    def log_probs(self, inputs, cond_inputs=None):
         u, log_jacob = self(inputs, cond_inputs)
         return log_jacob.sum(-1, keepdim=True)
 
@@ -607,8 +609,9 @@ class FlowSequentialUniformBase(nn.Sequential):
 
 
 def sum_except_batch(x, num_batch_dims=1):
-    """Sums all elements of `x` except for the first `num_batch_dims` dimensions.
-       adapted from https://github.com/bayesiains/nflows/blob/master/nflows/utils/torchutils.py
+    """Sums all elements of `x` except for the first `num_batch_dims`
+    dimensions. Adapted from:
+    https://github.com/bayesiains/nflows/blob/master/nflows/utils/torchutils.py
     """
     reduce_dims = list(range(num_batch_dims, x.ndimension()))
     return torch.sum(x, dim=reduce_dims)
@@ -626,8 +629,9 @@ class CouplingLayerBlock(nn.Module):
                  mask_type='binary'):
         super(CouplingLayerBlock, self).__init__()
 
-        #mask = get_CL_mask(num_inputs, mask_type=mask_type)
-        self.register_buffer("mask", get_CL_mask(num_inputs, mask_type=mask_type))
+        # mask = get_CL_mask(num_inputs, mask_type=mask_type)
+        self.register_buffer("mask", get_CL_mask(num_inputs,
+                                                 mask_type=mask_type))
 
         CL_block = [CouplingLayer(num_inputs,
                                   num_hidden,
