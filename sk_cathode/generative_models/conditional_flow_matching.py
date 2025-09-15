@@ -7,11 +7,14 @@ import torch.nn as nn
 import torch.optim as optim
 
 from os import makedirs
-from os.path import join
+from os.path import join, exists
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import train_test_split
 from torchdyn.core import NeuralODE
 from tqdm import tqdm
+
+#import sys
+#sys.path.append("/home/schwat/sk_cathode/sk_cathode/generative_models/")
 
 
 sklearn.set_config(enable_metadata_routing=True)
@@ -72,42 +75,48 @@ class ConditionalFlowMatching(BaseEstimator):
         self,
         save_path=None,
         load=False,
-        optimizer_name="Adam",
+        optimizer="Adam",
         num_inputs=4,
         num_cond_inputs=1,
+        num_freqs=3,
         num_blocks=1,
         activation_function="ELU",
-        lr=0.0001,
+        lr=1e-3,
         weight_decay=0.000001,
         early_stopping=False,
         patience=10,
         no_gpu=False,
         val_split=0.2,
-        batch_size=256,
+        batch_size=16384,
         drop_last=True,
-        epochs=100,
-        verbose=False
+        epochs=1000,
+        verbose=False,
+        layers_per_mlp = 5,
+        hidden_features_list = [128],
+        use_transformer = False,
+        transformer_num_heads = 4,
+        transformer_model_dim = 128,
+        transformer_num_blocks = 4,
+        transformer_dim_ff = 256,
+        dropout = 0.1,
+        start_saving = 0,
     ):
-        self.optimizer_name = optimizer_name
-        if optimizer_name != "Adam":
+        if optimizer != "Adam":
             raise NotImplementedError
 
         self.save_path = save_path
         if save_path is not None:
             self.de_model_path = join(save_path, "DE_models/")
+            self.de_optimizer_path = join(save_path, "DE_optimizers/")
+            self.de_lr_scheduler_path = join(save_path, "DE_lr_sched/")
         else:
             self.de_model_path = None
-        self.load = load
+            self.de_optimizer_path = None
+            self.de_lr_scheduler_path = None
 
-        self.no_gpu = no_gpu
         self.device = torch.device("cuda:0" if torch.cuda.is_available()
                                    and not no_gpu else "cpu")
         self.num_inputs = num_inputs
-        self.num_cond_inputs = num_cond_inputs
-        self.num_blocks = num_blocks
-        self.activation_function = activation_function
-        self.lr = lr
-        self.weight_decay = weight_decay
         self.early_stopping = early_stopping
         self.patience = patience
         self.val_split = val_split
@@ -124,20 +133,31 @@ class ConditionalFlowMatching(BaseEstimator):
         self.set_predict_log_proba_request(m=True)
         self.set_predict_proba_request(m=True)
         self.set_score_request(m=True)
+        self.start_saving = start_saving
 
         flows = nn.ModuleList()
         for _ in range(num_blocks):
-            flows.append(CNF(num_inputs, freqs=3,
-                             activation=activation_function))
+            flows.append(CNF(num_inputs, freqs=num_freqs,
+                             activation=activation_function,
+                             hidden_features_list=hidden_features_list,
+                             layers_per_mlp=layers_per_mlp, 
+                             use_transformer=use_transformer,
+                             transformer_num_heads=transformer_num_heads,
+                             transformer_model_dim=transformer_model_dim,
+                             transformer_num_blocks=transformer_num_blocks,
+                             transformer_dim_ff=transformer_dim_ff,
+                             dropout=dropout,
+                             ))
         self.model = flows
-
         self.model.to(self.device)
+
         total_parameters = sum(p.numel() for p in self.model.parameters()
                                if p.requires_grad)
         print(f"ConditionalFlowMatching has {total_parameters} parameters")
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=lr,
                                     weight_decay=weight_decay)
+        self.lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=self.epochs, eta_min=1e-6)
 
         # defaulting to eval mode, switching to train mode in fit()
         self.model.eval()
@@ -152,12 +172,12 @@ class ConditionalFlowMatching(BaseEstimator):
         ----------
         X : numpy.ndarray
             Input data.
-        m : numpy.ndarray
-            Conditional data.
+        y : numpy.ndarray
+            Target data.
         X_val : numpy.ndarray, optional
             Validation input data.
-        m_val : numpy.ndarray, optional
-            Validation conditional data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
 
         Returns
         -------
@@ -192,6 +212,8 @@ class ConditionalFlowMatching(BaseEstimator):
 
         if self.de_model_path is not None:
             makedirs(self.de_model_path, exist_ok=True)
+            makedirs(self.de_optimizer_path, exist_ok=True)
+            makedirs(self.de_lr_scheduler_path, exist_ok=True)
 
         nan_mask = ~np.isnan(X_train).any(axis=1)
         X_train = X_train[nan_mask]
@@ -225,9 +247,8 @@ class ConditionalFlowMatching(BaseEstimator):
         # training loop
         for epoch in range(self.epochs if self.epochs is not None else 1000):
             print("\nEpoch: {}".format(epoch))
-
             train_loss = train_epoch(
-                self.model, self.optimizer, train_loader,
+                self.model, self.optimizer, train_loader, self.lr_scheduler, 
                 device=self.device, verbose=self.verbose
             )[0]
             val_loss = compute_loss_over_batches(self.model, val_loader,
@@ -241,10 +262,12 @@ class ConditionalFlowMatching(BaseEstimator):
                                            np.array([train_loss])))
             val_losses = np.concatenate((val_losses, np.array([val_loss])))
 
-            if self.save_path is not None:
+            if self.save_path is not None and epoch >= self.start_saving:
                 np.save(self._train_loss_path(), train_losses)
                 np.save(self._val_loss_path(), val_losses)
                 self._save_model(self._model_path(epoch))
+                self._save_optimizer(self._optimizer_path(epoch))
+                self._save_lr_scheduler(self._lr_scheduler_path(epoch))
 
             if self.early_stopping:
                 if epoch > self.patience:
@@ -267,12 +290,12 @@ class ConditionalFlowMatching(BaseEstimator):
         ----------
         X : numpy.ndarray
             Input data.
-        m : numpy.ndarray
-            Conditional data.
+        y : numpy.ndarray
+            Target data.
         X_val : numpy.ndarray, optional
             Validation input data.
-        m_val : numpy.ndarray, optional
-            Validation conditional data.
+        y_val : numpy.ndarray, optional
+            Validation target data.
 
         Returns
         -------
@@ -333,7 +356,8 @@ class ConditionalFlowMatching(BaseEstimator):
         Might create memory issues for large n_samples."""
 
         samples = torch.randn(n_samples, self.num_inputs).to(self.device)
-        cond = torch.tensor(cond).to(self.device)
+        #cond = torch.tensor(cond).to(self.device)
+        cond = cond.clone().detach().to(self.device)
         for f in reversed(self.model):
             samples = f.decode(
                 samples,
@@ -345,7 +369,7 @@ class ConditionalFlowMatching(BaseEstimator):
         return samples.cpu().detach().numpy()
 
     def sample(self, n_samples=1, m=None,
-               solver_config={"solver": "midpoint", "steps": 100}):
+               solver_config={"solver": "midpoint", "steps": 100}, verbose=False):
         """Samples from the model.
 
         Parameters
@@ -373,6 +397,7 @@ class ConditionalFlowMatching(BaseEstimator):
             cond=cond,
             ode_solver=solver_config["solver"],
             ode_steps=solver_config["steps"],
+            verbose=verbose,
         )[0]
 
         return samples
@@ -394,7 +419,10 @@ class ConditionalFlowMatching(BaseEstimator):
         """
         val_losses = self.load_val_loss()
         best_epoch = np.argmin(val_losses) - 1  # includes pre-training loss
-        self.load_epoch_model(best_epoch)
+        try:
+            self.load_epoch_model(best_epoch)
+        except:
+            print("No model found at epoch", best_epoch)
         self.model.eval()
 
     def load_train_loss(self):
@@ -421,6 +449,7 @@ class ConditionalFlowMatching(BaseEstimator):
             raise ValueError("save_path is None, cannot load val loss")
         return np.load(self._val_loss_path())
 
+
     def load_epoch_model(self, epoch):
         """Loads the model state from the provided save_path at the
         specified epoch.
@@ -430,14 +459,27 @@ class ConditionalFlowMatching(BaseEstimator):
         epoch : int
             Epoch at which to load the model state.
         """
-        self._load_model(self._model_path(epoch))
+        self._load_model(self._model_path(epoch), self._optimizer_path(epoch), self._lr_scheduler_path(epoch))
 
-    def _load_model(self, model_path):
+    def _load_model(self, model_path, optimizer_path, lr_scheduler_path):
         self.model.load_state_dict(torch.load(model_path,
                                               map_location=self.device))
+        if exists(optimizer_path):
+            self.optimizer.load_state_dict(torch.load(optimizer_path,
+                                                      map_location=self.device))
+        if exists(lr_scheduler_path):
+            self.lr_scheduler.load_state_dict(torch.load(lr_scheduler_path,
+                                                        map_location=self.device))
+
 
     def _save_model(self, model_path):
         torch.save(self.model.state_dict(), model_path)
+
+    def _save_optimizer(self, optimizer_path):
+        torch.save(self.optimizer.state_dict(), optimizer_path)
+
+    def _save_lr_scheduler(self, lr_scheduler_path):
+        torch.save(self.lr_scheduler.state_dict(), lr_scheduler_path)
 
     def _train_loss_path(self):
         return join(self.save_path, "DE_train_losses.npy")
@@ -448,8 +490,11 @@ class ConditionalFlowMatching(BaseEstimator):
     def _model_path(self, epoch):
         return join(self.de_model_path, f"DE_epoch_{epoch}.par")
 
-
-# utility functions
+    def _optimizer_path(self, epoch):
+        return join(self.de_optimizer_path, f"OPT_epoch_{epoch}.par")
+        
+    def _lr_scheduler_path(self, epoch):
+        return join(self.de_lr_scheduler_path, f"LR_SCHED_epoch_{epoch}.par")
 
 
 def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
@@ -487,7 +532,8 @@ def numpy_to_torch_loader(X, m, batch_size=256, shuffle=True,
 
 
 def compute_loss_over_batches(model, data_loader,
-                              device=torch.device("cpu")):
+                              device=torch.device("cpu"),
+                              use_bayesian_layers=False):
     """Computes the loss over the provided data.
 
     Parameters
@@ -507,26 +553,25 @@ def compute_loss_over_batches(model, data_loader,
     model.eval()
     with torch.no_grad():
         now_loss = 0
-        n_nans = 0
-        n_highs = 0
+        loss_func = FlowMatchingLoss(model, sigma=1e-4)
         for batch_idx, batch_data in enumerate(data_loader):
             data = batch_data[0]
             data = data.to(device)
             cond_data = batch_data[1].float()
             cond_data = cond_data.to(device)
 
-            loss_func = FlowMatchingLoss(model, sigma=1e-4)
+            for layer in model.modules():
+                if hasattr(layer, 'sample_weights'):
+                    layer.sample_weights()
 
-            loss = loss_func(data, cond=cond_data)
-
-            now_loss += loss.item()
-            end_loss = now_loss / (batch_idx + 1)
-        print("n_nans =", n_nans)
-        print("n_highs =", n_highs)
+            batch_loss = loss_func(data, cond=cond_data)
+            now_loss += batch_loss.item()
+            
+        end_loss = now_loss / (batch_idx + 1)
         return (end_loss,)
 
 
-def train_epoch(model, optimizer, data_loader,
+def train_epoch(model, optimizer, data_loader, lr_scheduler,
                 device=torch.device("cpu"), verbose=True):
     """Trains the provided model for one epoch.
 
@@ -566,19 +611,23 @@ def train_epoch(model, optimizer, data_loader,
 
         optimizer.zero_grad()
 
-        train_loss = loss_func(data, cond=cond_data)
+        batch_loss = loss_func(data, cond=cond_data)
+        train_loss += batch_loss.item()
 
-        train_loss.backward()
+        batch_loss.backward()
         optimizer.step()
 
         if verbose:
             pbar.update(data.size(0))
             pbar.set_description("Train Loss: {:.6f}".format(train_loss))
 
+    lr_scheduler.step()
+
     if verbose:
         pbar.close()
 
-    return (train_loss.item(),)
+    train_loss /= (batch_idx + 1)
+    return (train_loss,)
 
 
 class MLP(nn.Sequential):
@@ -608,43 +657,64 @@ class small_cond_MLP_model(nn.Module):
         activation: str = "ELU",
         dim_t: int = 6,
         dim_cond: int = 1,
+        layers_per_mlp: int = 5,
+        hidden_features_list: list[int] = [128],
     ):
         super().__init__()
-        self.mlp1 = MLP(
-            in_features + dim_t + dim_cond,
-            out_features=64,
-            hidden_features=[64, 64],
-            activation=activation,
-        )
-        self.mlp2 = MLP(
-            64 + dim_t + dim_cond,
-            out_features=256,
-            hidden_features=[256, 256],
-            activation=activation,
-        )
-        self.mlp3 = MLP(
-            256 + dim_t + dim_cond,
-            out_features=256,
-            hidden_features=[256, 256],
-            activation=activation,
-        )
-        self.mlp4 = MLP(
-            256 + dim_t + dim_cond,
-            out_features=out_features,
-            hidden_features=[64, 64],
-            activation=activation,
-        )
+
+        self.mlp_list = nn.ModuleList()
+        for mlp_index, num_hidden_features in enumerate(hidden_features_list):
+            self.mlp_list.append(MLP(
+                in_features = (in_features if mlp_index==0 else hidden_features_list[mlp_index-1]) + dim_t + dim_cond,
+                out_features = out_features if mlp_index==len(hidden_features_list)-1 else hidden_features_list[mlp_index],
+                hidden_features=[num_hidden_features] * layers_per_mlp,
+                activation=activation,
+            ))
+        
 
     def forward(self, t, x, cond):
-        x = torch.cat([t, x, cond], dim=-1)
-        x = self.mlp1(x)
-        x = torch.cat([t, x, cond], dim=-1)
-        x = self.mlp2(x)
-        x = torch.cat([t, x, cond], dim=-1)
-        x = self.mlp3(x)
-        x = torch.cat([t, x, cond], dim=-1)
-        x = self.mlp4(x)
+        for mlp in self.mlp_list:
+            x = torch.cat([t, x, cond], dim=-1)
+            x = mlp(x)
         return x
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, model_dim, num_heads=4, dim_ff=64, dropout=0.1):
+        super().__init__()
+        self.attention = nn.MultiheadAttention(model_dim, num_heads, batch_first=True)
+        self.norm1 = nn.LayerNorm(model_dim)
+        self.norm2 = nn.LayerNorm(model_dim)
+        self.ff = nn.Sequential(
+            nn.Linear(model_dim, dim_ff),
+            nn.GELU(),
+            nn.Linear(dim_ff, model_dim),
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        attn_out, _ = self.attention(x, x, x)
+        x = self.norm1(x + self.dropout(attn_out))
+        ff_out = self.ff(x)
+        x = self.norm2(x + self.dropout(ff_out))
+        return x
+    
+
+class Transformer(nn.Module):
+    def __init__(self, input_dim, t_dim, cond_dim, model_dim, num_blocks, num_heads=4, dim_ff=64, dropout=0.1):
+        super().__init__()
+        self.input_proj = nn.Linear(input_dim+t_dim+cond_dim, model_dim)
+        self.blocks = nn.Sequential(*[TransformerBlock(model_dim, num_heads, dim_ff, dropout) for block_idx in range(num_blocks)])
+        self.output_proj = nn.Linear(model_dim, input_dim)
+
+
+    def forward(self, t, x, cond):
+        x = torch.cat([t, x, cond], axis=-1)
+        x = x.unsqueeze(1)
+        x = self.input_proj(x)
+        x = self.blocks(x)
+        return self.output_proj(x).squeeze(1)
 
 
 def generate_data(
@@ -682,7 +752,8 @@ def generate_data(
     particle_data_sampled = []
     start_time = 0
 
-    for i in tqdm(range(num_jet_samples // batch_size), disable=not verbose):
+    #for i in tqdm(range(num_jet_samples // batch_size), disable=not verbose):
+    for i in range(num_jet_samples // batch_size):
         if cond is not None:
             cond_batch = cond[i*batch_size:(i + 1)*batch_size]
         else:
@@ -767,6 +838,8 @@ class FlowMatchingLoss(nn.Module):
         for v in self.flows:
             temp = v(t.squeeze(-1), temp, mask=mask, cond=cond)
         v_t = temp.clone()
+        #print(v_t[:10])
+        #print(u_t[:10])
 
         sqrd = (v_t - u_t).square()
         out = sqrd.sum() / mask.sum()  # mean with ignoring masked values
@@ -803,12 +876,28 @@ class CNF(nn.Module):
         features: int,
         freqs: int = 3,
         activation: str = "Tanh",
+        layers_per_mlp: int = 5,
+        hidden_features_list: list[int] = [128],
+        use_transformer: bool = False,
+        transformer_num_heads: int = 4,
+        transformer_model_dim: int = 128,
+        transformer_num_blocks: int = 4,
+        transformer_dim_ff: int = 256,
+        dropout: float = 0.1,
     ):
         super().__init__()
         # Any architecture can be used here
-        self.net = small_cond_MLP_model(
-            features, features, dim_t=2 * freqs, dim_cond=1,
-            activation=activation
+        if use_transformer:
+            self.net = Transformer(
+                features, 2 * freqs, cond_dim=1, model_dim=transformer_model_dim,
+                num_blocks=transformer_num_blocks, num_heads=transformer_num_heads, 
+                dropout=dropout, dim_ff=transformer_dim_ff, 
+            )
+        else:
+            self.net = small_cond_MLP_model(
+                features, features, dim_t=2 * freqs, dim_cond=1,
+                activation=activation, layers_per_mlp=layers_per_mlp,
+                hidden_features_list=hidden_features_list,
         )
 
         self.register_buffer("freqs", torch.arange(1, freqs + 1) * torch.pi)
